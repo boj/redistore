@@ -4,7 +4,7 @@
 
 # Requirements
 
-Depends on the [Redigo](https://github.com/garyburd/redigo/redis) library.
+Depends on the [Redigo](https://github.com/garyburd/redigo) Redis library.
 
 # Installation
 

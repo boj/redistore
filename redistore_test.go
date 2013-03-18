@@ -3,6 +3,7 @@ package redistore
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"github.com/gorilla/sessions"
 	"net/http"
 	"testing"
@@ -198,6 +199,17 @@ func TestRediStore(t *testing.T) {
 	if custom.Type != 42 || custom.Message != "foo" {
 		t.Errorf("Expected %#v, got %#v", FlashMessage{42, "foo"}, custom)
 	}
+}
+
+func ExampleRediStore() {
+	// RedisStore
+	store := NewRediStore([]byte("secret-key"))
+
+	// Connect to redis backend.
+	if err := store.Dial("tcp", ":6379"); err != nil {
+		fmt.Errorf("Error connecting to redis: %v", err)
+	}
+	defer store.Close()
 }
 
 func init() {

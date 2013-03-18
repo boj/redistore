@@ -16,7 +16,7 @@ import (
 
 // RediStore stores sessions in a redis backend.
 type RediStore struct {
-	Conn    redis.Conn
+	conn    redis.Conn
 	Codecs  []securecookie.Codec
 	Options *sessions.Options // default configuration
 }
@@ -38,13 +38,13 @@ func (s *RediStore) Dial(network, address string) error {
 	if err != nil {
 		return err
 	}
-	s.Conn = c
+	s.conn = c
 	return nil
 }
 
 // Close closes the redis connection.
 func (s *RediStore) Close() {
-	s.Conn.Close()
+	s.conn.Close()
 }
 
 // Get returns a session for the given name after adding it to the registry.
@@ -77,6 +77,7 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 // Save adds a single session to the response.
 func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
 	if session.ID == "" {
+		// Build an alphanumeric key for the redis store.
 		session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
 	}
 	encoded, err := securecookie.EncodeMulti(session.Name(), session.Values, s.Codecs...)
@@ -92,24 +93,28 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 
 // save stores the session in redis.
 func (s *RediStore) save(session *sessions.Session, encoded string) error {
-	s.Conn.Do("SET", "session_"+session.ID, encoded)
-	data, err := redis.String(s.Conn.Do("GET", "session_"+session.ID))
+	// Pipeline the commands for efficiency.
+	s.conn.Send("SET", "session_"+session.ID, []byte(encoded))
+	s.conn.Send("GET", "session_"+session.ID)
+	s.conn.Flush()
+	s.conn.Receive()              // SET
+	data, err := s.conn.Receive() // GET
 	if err != nil {
 		return err
 	}
 	if len(encoded) > 0 && data == "" {
-		return errors.New("save: data was not stored")
+		return errors.New("save: data was not found in redis store")
 	}
 	return nil
 }
 
 // load reads the session from redis.
 func (s *RediStore) load(session *sessions.Session) error {
-	data, err := redis.String(s.Conn.Do("GET", "session_"+session.ID))
+	data, err := s.conn.Do("GET", "session_"+session.ID)
 	if err != nil {
 		return err
 	}
-	if err = securecookie.DecodeMulti(session.Name(), data, &session.Values, s.Codecs...); err != nil {
+	if err = securecookie.DecodeMulti(session.Name(), data.(string), &session.Values, s.Codecs...); err != nil {
 		return err
 	}
 	return nil
