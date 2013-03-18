@@ -6,7 +6,6 @@ package redistore
 
 import (
 	"encoding/base32"
-	"errors"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
@@ -63,7 +62,7 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 	session.IsNew = true
 	var err error
 	if c, errCookie := r.Cookie(name); errCookie == nil {
-		err = securecookie.DecodeMulti(name, c.Value, &session.ID, s.Codecs...)
+		err = securecookie.DecodeMulti(name, c.Value, &session.Values, s.Codecs...)
 		if err == nil {
 			err = s.load(session)
 			if err == nil {
@@ -80,7 +79,7 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 		// Build an alphanumeric key for the redis store.
 		session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
 	}
-	encoded, err := securecookie.EncodeMulti(session.Name(), session.Values, s.Codecs...)
+	encoded, err := securecookie.EncodeMulti(session.Name(), &session.Values, s.Codecs...)
 	if err != nil {
 		return err
 	}
@@ -91,30 +90,33 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 	return nil
 }
 
-// save stores the session in redis.
-func (s *RediStore) save(session *sessions.Session, encoded string) error {
-	// Pipeline the commands for efficiency.
-	s.conn.Send("SET", "session_"+session.ID, []byte(encoded))
-	s.conn.Send("GET", "session_"+session.ID)
-	s.conn.Flush()
-	s.conn.Receive()              // SET
-	data, err := s.conn.Receive() // GET
-	if err != nil {
+// Delete removes the session from redis, and sets the cookie to expire.
+func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+	if err := s.conn.Send("DEL", "session_"+session.ID); err != nil {
 		return err
 	}
-	if len(encoded) > 0 && data == "" {
-		return errors.New("save: data was not found in redis store")
+	// Set cookie to expire.
+	options := session.Options
+	options.MaxAge = -1
+	http.SetCookie(w, sessions.NewCookie(session.Name(), "", options))
+	return nil
+}
+
+// save stores the session in redis.
+func (s *RediStore) save(session *sessions.Session, encoded string) error {
+	if err := s.conn.Send("SET", "session_"+session.ID, encoded); err != nil {
+		return err
 	}
 	return nil
 }
 
 // load reads the session from redis.
 func (s *RediStore) load(session *sessions.Session) error {
-	data, err := s.conn.Do("GET", "session_"+session.ID)
+	data, err := redis.String(s.conn.Do("GET", "session_"+session.ID))
 	if err != nil {
 		return err
 	}
-	if err = securecookie.DecodeMulti(session.Name(), data.(string), &session.Values, s.Codecs...); err != nil {
+	if err = securecookie.DecodeMulti(session.Name(), data, &session.Values, s.Codecs...); err != nil {
 		return err
 	}
 	return nil

@@ -199,6 +199,26 @@ func TestRediStore(t *testing.T) {
 	if custom.Type != 42 || custom.Message != "foo" {
 		t.Errorf("Expected %#v, got %#v", FlashMessage{42, "foo"}, custom)
 	}
+
+	// Round 5 ----------------------------------------------------------------
+	// RediStore Delete session
+
+	req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
+	req.Header.Add("Cookie", cookies[0])
+	rsp = NewRecorder()
+	// Get a session.
+	if session, err = store.Get(req, "session-key"); err != nil {
+		t.Fatalf("Error getting session: %v", err)
+	}
+	// Delete session.
+	if err = store.Delete(req, rsp, session); err != nil {
+		t.Fatalf("Error deleting session: %v", err)
+	}
+	// Get a flash.
+	flashes = session.Flashes()
+	if len(flashes) != 0 {
+		t.Errorf("Expected empty flashes; Got %v", flashes)
+	}
 }
 
 func ExampleRediStore() {
