@@ -15,7 +15,9 @@ import (
 
 // RediStore stores sessions in a redis backend.
 type RediStore struct {
-	conn    redis.Conn
+	network string
+	address string
+	pool    ConnectionPool
 	Codecs  []securecookie.Codec
 	Options *sessions.Options // default configuration
 }
@@ -32,18 +34,14 @@ func NewRediStore(keyPairs ...[]byte) *RediStore {
 }
 
 // Dial connects to the redis database.
-func (s *RediStore) Dial(network, address string) error {
-	c, err := redis.Dial(network, address)
-	if err != nil {
-		return err
-	}
-	s.conn = c
-	return nil
+// Size determines how many connections to pool.
+func (s *RediStore) Dial(network, address string, size int) error {
+	return s.pool.InitPool(size, network, address)
 }
 
-// Close closes the redis connection.
+// Close cleans up the redis connections.
 func (s *RediStore) Close() {
-	s.conn.Close()
+	s.pool.Close()
 }
 
 // Get returns a session for the given name after adding it to the registry.
@@ -92,7 +90,9 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 
 // Delete removes the session from redis, and sets the cookie to expire.
 func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
-	if err := s.conn.Send("DEL", "session_"+session.ID); err != nil {
+	conn := s.pool.GetConnection().(redis.Conn)
+	defer s.pool.Releaseconnection(conn)
+	if _, err := conn.Do("DEL", "session_"+session.ID); err != nil {
 		return err
 	}
 	// Set cookie to expire.
@@ -104,7 +104,9 @@ func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sess
 
 // save stores the session in redis.
 func (s *RediStore) save(session *sessions.Session, encoded string) error {
-	if err := s.conn.Send("SET", "session_"+session.ID, encoded); err != nil {
+	conn := s.pool.GetConnection().(redis.Conn)
+	defer s.pool.Releaseconnection(conn)
+	if _, err := conn.Do("SET", "session_"+session.ID, encoded); err != nil {
 		return err
 	}
 	return nil
@@ -112,7 +114,9 @@ func (s *RediStore) save(session *sessions.Session, encoded string) error {
 
 // load reads the session from redis.
 func (s *RediStore) load(session *sessions.Session) error {
-	data, err := redis.String(s.conn.Do("GET", "session_"+session.ID))
+	conn := s.pool.GetConnection().(redis.Conn)
+	defer s.pool.Releaseconnection(conn)
+	data, err := redis.String(conn.Do("GET", "session_"+session.ID))
 	if err != nil {
 		return err
 	}

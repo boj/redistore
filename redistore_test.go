@@ -84,7 +84,8 @@ func TestRediStore(t *testing.T) {
 	store := NewRediStore([]byte("secret-key"))
 
 	// Connect to redis backend.
-	if err := store.Dial("tcp", ":6379"); err != nil {
+	// Last parameter is number of connections to add to pool.
+	if err := store.Dial("tcp", ":6379", 10); err != nil {
 		t.Fatalf("Error connecting to redis: %v", err)
 	}
 	defer store.Close()
@@ -226,10 +227,10 @@ func ExampleRediStore() {
 	store := NewRediStore([]byte("secret-key"))
 
 	// Connect to redis backend.
-	if err := store.Dial("tcp", ":6379"); err != nil {
+	// Last parameter is number of connections to add to pool.
+	if err := store.Dial("tcp", ":6379", 10); err != nil {
 		fmt.Errorf("Error connecting to redis: %v", err)
 	}
-	defer store.Close()
 }
 
 func init() {
