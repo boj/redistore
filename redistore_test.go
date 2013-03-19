@@ -3,7 +3,6 @@ package redistore
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
 	"github.com/gorilla/sessions"
 	"net/http"
 	"testing"
@@ -81,13 +80,7 @@ func TestRediStore(t *testing.T) {
 	var flashes []interface{}
 
 	// RedisStore
-	store := NewRediStore([]byte("secret-key"))
-
-	// Connect to redis backend.
-	// Last parameter is number of connections to add to pool.
-	if err := store.Dial("tcp", ":6379", 10); err != nil {
-		t.Fatalf("Error connecting to redis: %v", err)
-	}
+	store := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
 	defer store.Close()
 
 	// Copyright 2012 The Gorilla Authors. All rights reserved.
@@ -224,13 +217,8 @@ func TestRediStore(t *testing.T) {
 
 func ExampleRediStore() {
 	// RedisStore
-	store := NewRediStore([]byte("secret-key"))
-
-	// Connect to redis backend.
-	// Last parameter is number of connections to add to pool.
-	if err := store.Dial("tcp", ":6379", 10); err != nil {
-		fmt.Errorf("Error connecting to redis: %v", err)
-	}
+	store := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	defer store.Close()
 }
 
 func init() {

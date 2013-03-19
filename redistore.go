@@ -11,20 +11,41 @@ import (
 	"github.com/gorilla/sessions"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // RediStore stores sessions in a redis backend.
 type RediStore struct {
-	network string
-	address string
-	pool    ConnectionPool
+	Pool    *redis.Pool
 	Codecs  []securecookie.Codec
 	Options *sessions.Options // default configuration
 }
 
 // NewRediStore returns a new RediStore.
-func NewRediStore(keyPairs ...[]byte) *RediStore {
+func NewRediStore(size int, network, address, password string, keyPairs ...[]byte) *RediStore {
 	return &RediStore{
+		// http://godoc.org/github.com/garyburd/redigo/redis#Pool
+		Pool: &redis.Pool{
+			MaxIdle:     size,
+			IdleTimeout: 240 * time.Second,
+			Dial: func() (redis.Conn, error) {
+				c, err := redis.Dial(network, address)
+				if err != nil {
+					return nil, err
+				}
+				if password != "" {
+					if _, err := c.Do("AUTH", password); err != nil {
+						c.Close()
+						return nil, err
+					}
+				}
+				return c, err
+			},
+			TestOnBorrow: func(c redis.Conn, t time.Time) error {
+				_, err := c.Do("PING")
+				return err
+			},
+		},
 		Codecs: securecookie.CodecsFromPairs(keyPairs...),
 		Options: &sessions.Options{
 			Path:   "/",
@@ -33,15 +54,9 @@ func NewRediStore(keyPairs ...[]byte) *RediStore {
 	}
 }
 
-// Dial connects to the redis database.
-// Size determines how many connections to pool.
-func (s *RediStore) Dial(network, address string, size int) error {
-	return s.pool.InitPool(size, network, address)
-}
-
 // Close cleans up the redis connections.
 func (s *RediStore) Close() {
-	s.pool.Close()
+	s.Pool.Close()
 }
 
 // Get returns a session for the given name after adding it to the registry.
@@ -90,8 +105,8 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 
 // Delete removes the session from redis, and sets the cookie to expire.
 func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
-	conn := s.pool.GetConnection().(redis.Conn)
-	defer s.pool.Releaseconnection(conn)
+	conn := s.Pool.Get()
+	defer conn.Close()
 	if _, err := conn.Do("DEL", "session_"+session.ID); err != nil {
 		return err
 	}
@@ -104,8 +119,8 @@ func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sess
 
 // save stores the session in redis.
 func (s *RediStore) save(session *sessions.Session, encoded string) error {
-	conn := s.pool.GetConnection().(redis.Conn)
-	defer s.pool.Releaseconnection(conn)
+	conn := s.Pool.Get()
+	defer conn.Close()
 	if _, err := conn.Do("SET", "session_"+session.ID, encoded); err != nil {
 		return err
 	}
@@ -114,8 +129,8 @@ func (s *RediStore) save(session *sessions.Session, encoded string) error {
 
 // load reads the session from redis.
 func (s *RediStore) load(session *sessions.Session) error {
-	conn := s.pool.GetConnection().(redis.Conn)
-	defer s.pool.Releaseconnection(conn)
+	conn := s.Pool.Get()
+	defer conn.Close()
 	data, err := redis.String(conn.Do("GET", "session_"+session.ID))
 	if err != nil {
 		return err
