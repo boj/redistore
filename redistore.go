@@ -14,6 +14,9 @@ import (
 	"time"
 )
 
+// Amount of time for cookies/redis keys to expire.
+var sessionExpire int = 86400 * 30
+
 // RediStore stores sessions in a redis backend.
 type RediStore struct {
 	Pool    *redis.Pool
@@ -49,7 +52,7 @@ func NewRediStore(size int, network, address, password string, keyPairs ...[]byt
 		Codecs: securecookie.CodecsFromPairs(keyPairs...),
 		Options: &sessions.Options{
 			Path:   "/",
-			MaxAge: 86400 * 30,
+			MaxAge: sessionExpire,
 		},
 	}
 }
@@ -121,7 +124,13 @@ func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sess
 func (s *RediStore) save(session *sessions.Session, encoded string) error {
 	conn := s.Pool.Get()
 	defer conn.Close()
-	if _, err := conn.Do("SET", "session_"+session.ID, encoded); err != nil {
+	conn.Send("SET", "session_"+session.ID, encoded)
+	conn.Send("EXPIRE", "session_"+session.ID, sessionExpire)
+	conn.Flush()
+	if _, err := conn.Receive(); err != nil { // SET
+		return err
+	}
+	if _, err := conn.Receive(); err != nil { // EXPIRE
 		return err
 	}
 	return nil
