@@ -213,6 +213,11 @@ func TestRediStore(t *testing.T) {
 	if len(flashes) != 0 {
 		t.Errorf("Expected empty flashes; Got %v", flashes)
 	}
+	hdr = rsp.Header()
+	cookies, ok = hdr["Set-Cookie"]
+	if !ok || len(cookies) != 1 {
+		t.Fatalf("No cookies. Header:", hdr)
+	}
 }
 
 func ExampleRediStore() {

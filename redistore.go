@@ -73,10 +73,12 @@ func (s *RediStore) Get(r *http.Request, name string) (*sessions.Session, error)
 //
 // See gorilla/sessions FilesystemStore.New().
 func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error) {
+	var err error
 	session := sessions.NewSession(s, name)
 	session.Options = &(*s.Options)
 	session.IsNew = true
-	var err error
+	// Build an alphanumeric key for the redis store.
+	session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
 	if c, errCookie := r.Cookie(name); errCookie == nil {
 		err = securecookie.DecodeMulti(name, c.Value, &session.Values, s.Codecs...)
 		if err == nil {
@@ -91,10 +93,6 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 
 // Save adds a single session to the response.
 func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
-	if session.ID == "" {
-		// Build an alphanumeric key for the redis store.
-		session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
-	}
 	encoded, err := securecookie.EncodeMulti(session.Name(), &session.Values, s.Codecs...)
 	if err != nil {
 		return err
@@ -117,6 +115,10 @@ func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sess
 	options := session.Options
 	options.MaxAge = -1
 	http.SetCookie(w, sessions.NewCookie(session.Name(), "", options))
+	// Clear session values.
+	for k := range session.Values {
+		delete(session.Values, k)
+	}
 	return nil
 }
 
@@ -140,11 +142,21 @@ func (s *RediStore) save(session *sessions.Session, encoded string) error {
 func (s *RediStore) load(session *sessions.Session) error {
 	conn := s.Pool.Get()
 	defer conn.Close()
-	data, err := redis.String(conn.Do("GET", "session_"+session.ID))
+	if err := conn.Err(); err != nil {
+		return err
+	}
+	data, err := conn.Do("GET", "session_"+session.ID)
 	if err != nil {
 		return err
 	}
-	if err = securecookie.DecodeMulti(session.Name(), data, &session.Values, s.Codecs...); err != nil {
+	if data == nil {
+		return nil // no data was associated with this key
+	}
+	str, err := redis.String(data, err)
+	if err != nil {
+		return err
+	}
+	if err = securecookie.DecodeMulti(session.Name(), str, &session.Values, s.Codecs...); err != nil {
 		return err
 	}
 	return nil
