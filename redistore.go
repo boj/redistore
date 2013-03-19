@@ -77,8 +77,6 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 	session := sessions.NewSession(s, name)
 	session.Options = &(*s.Options)
 	session.IsNew = true
-	// Build an alphanumeric key for the redis store.
-	session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
 	if c, errCookie := r.Cookie(name); errCookie == nil {
 		err = securecookie.DecodeMulti(name, c.Value, &session.Values, s.Codecs...)
 		if err == nil {
@@ -93,6 +91,10 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 
 // Save adds a single session to the response.
 func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+	// Build an alphanumeric key for the redis store.
+	if session.ID == "" {
+		session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
+	}
 	encoded, err := securecookie.EncodeMulti(session.Name(), &session.Values, s.Codecs...)
 	if err != nil {
 		return err
