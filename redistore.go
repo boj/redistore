@@ -78,7 +78,7 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 	session.Options = &(*s.Options)
 	session.IsNew = true
 	if c, errCookie := r.Cookie(name); errCookie == nil {
-		err = securecookie.DecodeMulti(name, c.Value, &session.Values, s.Codecs...)
+		err = securecookie.DecodeMulti(name, c.Value, &session.ID, s.Codecs...)
 		if err == nil {
 			err = s.load(session)
 			if err == nil {
@@ -95,11 +95,11 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 	if session.ID == "" {
 		session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
 	}
-	encoded, err := securecookie.EncodeMulti(session.Name(), &session.Values, s.Codecs...)
-	if err != nil {
+	if err := s.save(session); err != nil {
 		return err
 	}
-	if err := s.save(session, encoded); err != nil {
+	encoded, err := securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
+	if err != nil {
 		return err
 	}
 	http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, session.Options))
@@ -125,7 +125,11 @@ func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sess
 }
 
 // save stores the session in redis.
-func (s *RediStore) save(session *sessions.Session, encoded string) error {
+func (s *RediStore) save(session *sessions.Session) error {
+	encoded, err := securecookie.EncodeMulti(session.Name(), session.Values, s.Codecs...)
+	if err != nil {
+		return err
+	}
 	conn := s.Pool.Get()
 	defer conn.Close()
 	conn.Send("SET", "session_"+session.ID, encoded)
