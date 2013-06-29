@@ -114,9 +114,9 @@ func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sess
 		return err
 	}
 	// Set cookie to expire.
-	options := session.Options
+	options := *session.Options
 	options.MaxAge = -1
-	http.SetCookie(w, sessions.NewCookie(session.Name(), "", options))
+	http.SetCookie(w, sessions.NewCookie(session.Name(), "", &options))
 	// Clear session values.
 	for k := range session.Values {
 		delete(session.Values, k)
