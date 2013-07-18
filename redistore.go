@@ -91,22 +91,33 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 
 // Save adds a single session to the response.
 func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
-	// Build an alphanumeric key for the redis store.
-	if session.ID == "" {
-		session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
+	// Marked for deletion.
+	if session.Options.MaxAge < 0 {
+		if err := s.delete(session); err != nil {
+			return err
+		}
+		http.SetCookie(w, sessions.NewCookie(session.Name(), "", session.Options))
+	} else {
+		// Build an alphanumeric key for the redis store.
+		if session.ID == "" {
+			session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
+		}
+		if err := s.save(session); err != nil {
+			return err
+		}
+		encoded, err := securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
+		if err != nil {
+			return err
+		}
+		http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, session.Options))
 	}
-	if err := s.save(session); err != nil {
-		return err
-	}
-	encoded, err := securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
-	if err != nil {
-		return err
-	}
-	http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, session.Options))
 	return nil
 }
 
 // Delete removes the session from redis, and sets the cookie to expire.
+//
+// WARNING: This method should be considered deprecated since it is not exposed via the gorilla/sessions interface.
+// Set session.Options.MaxAge = -1 and call Save instead. - July 18th, 2013
 func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
 	conn := s.Pool.Get()
 	defer conn.Close()
@@ -163,6 +174,16 @@ func (s *RediStore) load(session *sessions.Session) error {
 		return err
 	}
 	if err = securecookie.DecodeMulti(session.Name(), str, &session.Values, s.Codecs...); err != nil {
+		return err
+	}
+	return nil
+}
+
+// delete removes keys from redis if MaxAge<0
+func (s *RediStore) delete(session *sessions.Session) error {
+	conn := s.Pool.Get()
+	defer conn.Close()
+	if _, err := conn.Do("DEL", "session_"+session.ID); err != nil {
 		return err
 	}
 	return nil

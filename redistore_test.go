@@ -79,15 +79,15 @@ func TestRediStore(t *testing.T) {
 	var session *sessions.Session
 	var flashes []interface{}
 
-	// RedisStore
-	store := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
-	defer store.Close()
-
 	// Copyright 2012 The Gorilla Authors. All rights reserved.
 	// Use of this source code is governed by a BSD-style
 	// license that can be found in the LICENSE file.
 
 	// Round 1 ----------------------------------------------------------------
+
+	// RedisStore
+	store := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	defer store.Close()
 
 	req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
 	rsp = NewRecorder()
@@ -148,8 +148,20 @@ func TestRediStore(t *testing.T) {
 		t.Errorf("Expected dumped flashes; Got %v", flashes)
 	}
 
+	// RediStore specific
+	// Set MaxAge to -1 to mark for deletion.
+	session.Options.MaxAge = -1
+	// Save.
+	if err = sessions.Save(req, rsp); err != nil {
+		t.Fatalf("Error saving session: %v", err)
+	}
+
 	// Round 3 ----------------------------------------------------------------
 	// Custom type
+
+	// RedisStore
+	store = NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	defer store.Close()
 
 	req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
 	rsp = NewRecorder()
@@ -194,30 +206,38 @@ func TestRediStore(t *testing.T) {
 		t.Errorf("Expected %#v, got %#v", FlashMessage{42, "foo"}, custom)
 	}
 
-	// Round 5 ----------------------------------------------------------------
-	// RediStore Delete session
+	// RediStore specific
+	// Set MaxAge to -1 to mark for deletion.
+	session.Options.MaxAge = -1
+	// Save.
+	if err = sessions.Save(req, rsp); err != nil {
+		t.Fatalf("Error saving session: %v", err)
+	}
 
-	req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
-	req.Header.Add("Cookie", cookies[0])
-	rsp = NewRecorder()
-	// Get a session.
-	if session, err = store.Get(req, "session-key"); err != nil {
-		t.Fatalf("Error getting session: %v", err)
-	}
-	// Delete session.
-	if err = store.Delete(req, rsp, session); err != nil {
-		t.Fatalf("Error deleting session: %v", err)
-	}
-	// Get a flash.
-	flashes = session.Flashes()
-	if len(flashes) != 0 {
-		t.Errorf("Expected empty flashes; Got %v", flashes)
-	}
-	hdr = rsp.Header()
-	cookies, ok = hdr["Set-Cookie"]
-	if !ok || len(cookies) != 1 {
-		t.Fatalf("No cookies. Header:", hdr)
-	}
+	// Round 5 ----------------------------------------------------------------
+	// RediStore Delete session (deprecated)
+
+	//req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
+	//req.Header.Add("Cookie", cookies[0])
+	//rsp = NewRecorder()
+	//// Get a session.
+	//if session, err = store.Get(req, "session-key"); err != nil {
+	//	t.Fatalf("Error getting session: %v", err)
+	//}
+	//// Delete session.
+	//if err = store.Delete(req, rsp, session); err != nil {
+	//	t.Fatalf("Error deleting session: %v", err)
+	//}
+	//// Get a flash.
+	//flashes = session.Flashes()
+	//if len(flashes) != 0 {
+	//	t.Errorf("Expected empty flashes; Got %v", flashes)
+	//}
+	//hdr = rsp.Header()
+	//cookies, ok = hdr["Set-Cookie"]
+	//if !ok || len(cookies) != 1 {
+	//	t.Fatalf("No cookies. Header:", hdr)
+	//}
 }
 
 func ExampleRediStore() {

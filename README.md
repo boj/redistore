@@ -1,15 +1,49 @@
 # redistore
 
-## A session store backend for gorilla/sessions
+A session store backend for [gorilla/sessions](http://www.gorillatoolkit.org/pkg/sessions) - [src](https://github.com/gorilla/sessions).
 
-# Requirements
+## Requirements
 
 Depends on the [Redigo](https://github.com/garyburd/redigo) Redis library.
 
-# Installation
+## Installation
 
     go get github.com/boj/redistore
 
-# Documentation
+## Documentation
 
-Available on [godoc.org](http://www.godoc.org/github.com/boj/redistore)
+Available on [godoc.org](http://www.godoc.org/github.com/boj/redistore).
+
+See http://www.gorillatoolkit.org/pkg/sessions for full documentation on underlying interface.
+
+### Example
+
+    // Fetch new store.
+    store := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+    defer store.Close()
+
+    // Get a session.
+	session, err = store.Get(req, "session-key")
+	if err != nil {
+        log.Error(err.Error())
+    }
+
+    // Add a value.
+    session.Values["foo"] = "bar"
+
+    // Save.
+    if err = sessions.Save(req, rsp); err != nil {
+        t.Fatalf("Error saving session: %v", err)
+    }
+
+    // Delete session.
+    session.Options.MaxAge = -1
+    if err = sessions.Save(req, rsp); err != nil {
+        t.Fatalf("Error saving session: %v", err)
+    }
+
+## Notes
+
+#### July 18th, 2013
+
+* __Delete()__ should be considered deprecated since it is not exposed via the gorilla/sessions interface.  Set session.Options.MaxAge = -1 and call Save instead.
