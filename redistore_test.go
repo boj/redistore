@@ -2,9 +2,11 @@ package redistore
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/gob"
 	"github.com/gorilla/sessions"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -238,6 +240,29 @@ func TestRediStore(t *testing.T) {
 	//if !ok || len(cookies) != 1 {
 	//	t.Fatalf("No cookies. Header:", hdr)
 	//}
+
+	// Round 6 ----------------------------------------------------------------
+	// RediStore change MaxLength of session
+
+	store = NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	req, err = http.NewRequest("GET", "http://www.example.com", nil)
+	if err != nil {
+		t.Fatal("failed to create request", err)
+	}
+	w := httptest.NewRecorder()
+
+	session, err = store.New(req, "my session")
+	session.Values["big"] = make([]byte, base64.StdEncoding.DecodedLen(4096*2))
+	err = session.Save(req, w)
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+
+	store.MaxLength(4096 * 3) // A bit more than the value size to account for encoding overhead.
+	err = session.Save(req, w)
+	if err != nil {
+		t.Fatal("failed to Save:", err)
+	}
 }
 
 func ExampleRediStore() {
