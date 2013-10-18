@@ -62,6 +62,18 @@ func (s *RediStore) Close() {
 	s.Pool.Close()
 }
 
+// MaxLength restricts the maximum length of new sessions to l.
+// If l is 0 there is no limit to the size of a session, use with caution.
+// The default for a new RediStore is 4096. Redis allows for max.
+// value sizes of up to 512MB (http://redis.io/topics/data-types)
+func (s *RediStore) MaxLength(l int) {
+	for _, c := range s.Codecs {
+		if codec, ok := c.(*securecookie.SecureCookie); ok {
+			codec.MaxLength(l)
+		}
+	}
+}
+
 // Get returns a session for the given name after adding it to the registry.
 //
 // See gorilla/sessions FilesystemStore.Get().
