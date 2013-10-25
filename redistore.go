@@ -155,16 +155,11 @@ func (s *RediStore) save(session *sessions.Session) error {
 	}
 	conn := s.Pool.Get()
 	defer conn.Close()
-	conn.Send("SET", "session_"+session.ID, encoded)
-	conn.Send("EXPIRE", "session_"+session.ID, sessionExpire)
-	conn.Flush()
-	if _, err := conn.Receive(); err != nil { // SET
+	if err = conn.Err(); err != nil {
 		return err
 	}
-	if _, err := conn.Receive(); err != nil { // EXPIRE
-		return err
-	}
-	return nil
+	_, err = conn.Do("SET", "session_"+session.ID, encoded, "EX", session.Options.MaxAge)
+	return err
 }
 
 // load reads the session from redis.
