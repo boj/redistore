@@ -158,7 +158,7 @@ func (s *RediStore) save(session *sessions.Session) error {
 	if err = conn.Err(); err != nil {
 		return err
 	}
-	_, err = conn.Do("SET", "session_"+session.ID, encoded, "EX", session.Options.MaxAge)
+	_, err = conn.Do("SETEX", "session_"+session.ID, session.Options.MaxAge, encoded)
 	return err
 }
 
