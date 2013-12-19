@@ -19,9 +19,10 @@ var sessionExpire int = 86400 * 30
 
 // RediStore stores sessions in a redis backend.
 type RediStore struct {
-	Pool    *redis.Pool
-	Codecs  []securecookie.Codec
-	Options *sessions.Options // default configuration
+	Pool          *redis.Pool
+	Codecs        []securecookie.Codec
+	Options       *sessions.Options // default configuration
+	DefaultMaxAge int               // default TTL for a MaxAge == 0 session
 }
 
 // NewRediStore returns a new RediStore.
@@ -54,6 +55,7 @@ func NewRediStore(size int, network, address, password string, keyPairs ...[]byt
 			Path:   "/",
 			MaxAge: sessionExpire,
 		},
+		DefaultMaxAge: 60 * 20, // 20 minutes seems like a reasonable default
 	}
 }
 
@@ -158,7 +160,11 @@ func (s *RediStore) save(session *sessions.Session) error {
 	if err = conn.Err(); err != nil {
 		return err
 	}
-	_, err = conn.Do("SETEX", "session_"+session.ID, session.Options.MaxAge, encoded)
+	age := session.Options.MaxAge
+	if age == 0 {
+		age = s.DefaultMaxAge
+	}
+	_, err = conn.Do("SETEX", "session_"+session.ID, age, encoded)
 	return err
 }
 
