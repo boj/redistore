@@ -106,9 +106,9 @@ func NewRediStoreWithDB(size int, network, address, password, DB string, keyPair
 	return rs
 }
 
-// Close cleans up the redis connections.
-func (s *RediStore) Close() {
-	s.Pool.Close()
+// Close closes the underlying *redis.Pool
+func (s *RediStore) Close() error {
+	return s.Pool.Close()
 }
 
 // Get returns a session for the given name after adding it to the registry.
