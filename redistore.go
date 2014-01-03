@@ -41,17 +41,37 @@ func (s *RediStore) MaxLength(l int) {
 	}
 }
 
-func newRediStore(size int, network, address, password string, keyPairs [][]byte) *RediStore {
+// NewRediStore returns a new RediStore.
+// size: maximum number of idle connections.
+func NewRediStore(size int, network, address, password string, keyPairs ...[]byte) *RediStore {
+	return NewRediStoreWithPool(&redis.Pool{
+		MaxIdle:     size,
+		IdleTimeout: 240 * time.Second,
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+		Dial: func() (redis.Conn, error) {
+			c, err := redis.Dial(network, address)
+			if err != nil {
+				return nil, err
+			}
+			if password != "" {
+				if _, err := c.Do("AUTH", password); err != nil {
+					c.Close()
+					return nil, err
+				}
+			}
+			return c, err
+		},
+	}, keyPairs...)
+}
+
+// NewRediStoreWithPool instantiates a RediStore with a *redis.Pool passed in.
+func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) *RediStore {
 	return &RediStore{
 		// http://godoc.org/github.com/garyburd/redigo/redis#Pool
-		Pool: &redis.Pool{
-			MaxIdle:     size,
-			IdleTimeout: 240 * time.Second,
-			TestOnBorrow: func(c redis.Conn, t time.Time) error {
-				_, err := c.Do("PING")
-				return err
-			},
-		},
+		Pool:   pool,
 		Codecs: securecookie.CodecsFromPairs(keyPairs...),
 		Options: &sessions.Options{
 			Path:   "/",
@@ -62,30 +82,10 @@ func newRediStore(size int, network, address, password string, keyPairs [][]byte
 	}
 }
 
-// NewRediStore returns a new RediStore.
-// size: maximum number of idle connections.
-func NewRediStore(size int, network, address, password string, keyPairs ...[]byte) *RediStore {
-	rs := newRediStore(size, network, address, password, keyPairs)
-	rs.Pool.Dial = func() (redis.Conn, error) {
-		c, err := redis.Dial(network, address)
-		if err != nil {
-			return nil, err
-		}
-		if password != "" {
-			if _, err := c.Do("AUTH", password); err != nil {
-				c.Close()
-				return nil, err
-			}
-		}
-		return c, err
-	}
-	return rs
-}
-
 // NewRedisStoreWithDB - like NewRedisStore but accepts `DB` parameter to select
 // redis DB instead of using the default one ("0")
 func NewRediStoreWithDB(size int, network, address, password, DB string, keyPairs ...[]byte) *RediStore {
-	rs := newRediStore(size, network, address, password, keyPairs)
+	rs := NewRediStore(size, network, address, password, keyPairs...)
 	rs.Pool.Dial = func() (redis.Conn, error) {
 		c, err := redis.Dial(network, address)
 		if err != nil {
@@ -106,9 +106,9 @@ func NewRediStoreWithDB(size int, network, address, password, DB string, keyPair
 	return rs
 }
 
-// Close cleans up the redis connections.
-func (s *RediStore) Close() {
-	s.Pool.Close()
+// Close closes the underlying *redis.Pool
+func (s *RediStore) Close() error {
+	return s.Pool.Close()
 }
 
 // Get returns a session for the given name after adding it to the registry.
