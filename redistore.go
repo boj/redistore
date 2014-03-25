@@ -9,6 +9,7 @@ import (
 	"encoding/base32"
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
@@ -25,19 +26,42 @@ type RediStore struct {
 	Pool          *redis.Pool
 	Codecs        []securecookie.Codec
 	Options       *sessions.Options // default configuration
-	DefaultMaxAge int               // default TTL for a MaxAge == 0 session
+	DefaultMaxAge int               // default Redis TTL for a MaxAge == 0 session
 	maxLength     int
 }
 
-// MaxLength sets RediStore.maxLength if the `l` argument is greater or equal 0
+// SetMaxLength sets RediStore.maxLength if the `l` argument is greater or equal 0
 // maxLength restricts the maximum length of new sessions to l.
 // If l is 0 there is no limit to the size of a session, use with caution.
 // The default for a new RediStore is 4096. Redis allows for max.
 // value sizes of up to 512MB (http://redis.io/topics/data-types)
 // Default: 4096,
-func (s *RediStore) MaxLength(l int) {
+func (s *RediStore) SetMaxLength(l int) {
 	if l >= 0 {
 		s.maxLength = l
+	}
+}
+
+// SetMaxAge restricts the maximum age, in seconds, of the session record
+// both in database and a browser. This is to change session storage configuration.
+// If you want just to remove session use your session `s` object and change it's
+// `Options.MaxAge` to -1, as specified in
+//    http://godoc.org/github.com/gorilla/sessions#Options
+//
+// Default is the one provided by this package value - `sessionExpire`.
+// Set it to 0 for no restriction.
+// Because we use `MaxAge` also in SecureCookie crypting algorithm you should
+// use this function to change `MaxAge` value.
+func (s *RediStore) SetMaxAge(v int) {
+	var c *securecookie.SecureCookie
+	var ok bool
+	s.Options.MaxAge = v
+	for i := range s.Codecs {
+		if c, ok = s.Codecs[i].(*securecookie.SecureCookie); ok {
+			c.MaxAge(v)
+		} else {
+			fmt.Printf("Can't change MaxAge on codec %t\n", s.Codecs[i])
+		}
 	}
 }
 

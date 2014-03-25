@@ -42,6 +42,10 @@ See http://www.gorillatoolkit.org/pkg/sessions for full documentation on underly
         t.Fatalf("Error saving session: %v", err)
     }
 
+    // Change session storage configuration for MaxAge = 10 days.
+    store.SetMaxAge(10*34*3600)
+
+
 ## Notes
 
 #### July 18th, 2013

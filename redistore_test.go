@@ -258,7 +258,7 @@ func TestRediStore(t *testing.T) {
 		t.Fatal("expected an error, got nil")
 	}
 
-	store.MaxLength(4096 * 3) // A bit more than the value size to account for encoding overhead.
+	store.SetMaxLength(4096 * 3) // A bit more than the value size to account for encoding overhead.
 	err = session.Save(req, w)
 	if err != nil {
 		t.Fatal("failed to Save:", err)
