@@ -81,7 +81,7 @@ func dial(network, address, password string) (redis.Conn, error) {
 
 // NewRediStore returns a new RediStore.
 // size: maximum number of idle connections.
-func NewRediStore(size int, network, address, password string, keyPairs ...[]byte) *RediStore {
+func NewRediStore(size int, network, address, password string, keyPairs ...[]byte) (*RediStore, error) {
 	return NewRediStoreWithPool(&redis.Pool{
 		MaxIdle:     size,
 		IdleTimeout: 240 * time.Second,
@@ -97,8 +97,8 @@ func NewRediStore(size int, network, address, password string, keyPairs ...[]byt
 
 // NewRedisStoreWithDB - like NewRedisStore but accepts `DB` parameter to select
 // redis DB instead of using the default one ("0")
-func NewRediStoreWithDB(size int, network, address, password, DB string, keyPairs ...[]byte) *RediStore {
-	rs := NewRediStore(size, network, address, password, keyPairs...)
+func NewRediStoreWithDB(size int, network, address, password, DB string, keyPairs ...[]byte) (*RediStore, error) {
+	rs, _ := NewRediStore(size, network, address, password, keyPairs...)
 	rs.Pool.Dial = func() (redis.Conn, error) {
 		c, err := dial(network, address, password)
 		if err != nil {
@@ -110,12 +110,13 @@ func NewRediStoreWithDB(size int, network, address, password, DB string, keyPair
 		}
 		return c, err
 	}
-	return rs
+	_, err := rs.ping()
+	return rs, err
 }
 
 // NewRediStoreWithPool instantiates a RediStore with a *redis.Pool passed in.
-func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) *RediStore {
-	return &RediStore{
+func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, error) {
+	rs := &RediStore{
 		// http://godoc.org/github.com/garyburd/redigo/redis#Pool
 		Pool:   pool,
 		Codecs: securecookie.CodecsFromPairs(keyPairs...),
@@ -126,6 +127,8 @@ func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) *RediStore {
 		DefaultMaxAge: 60 * 20, // 20 minutes seems like a reasonable default
 		maxLength:     4096,
 	}
+	_, err := rs.ping()
+	return rs, err
 }
 
 // Close closes the underlying *redis.Pool
@@ -202,6 +205,17 @@ func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sess
 		delete(session.Values, k)
 	}
 	return nil
+}
+
+// ping does an internal ping against a server to check if it is alive.
+func (s *RediStore) ping() (bool, error) {
+	conn := s.Pool.Get()
+	defer conn.Close()
+	data, err := conn.Do("PING")
+	if err != nil || data == nil {
+		return false, err
+	}
+	return (data == "PONG"), nil
 }
 
 // save stores the session in redis.

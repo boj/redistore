@@ -19,7 +19,10 @@ See http://www.gorillatoolkit.org/pkg/sessions for full documentation on underly
 ### Example
 
     // Fetch new store.
-    store := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+    store, err := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+    if err != nil {
+        panic(err)
+    }
     defer store.Close()
 
     // Get a session.
@@ -45,9 +48,3 @@ See http://www.gorillatoolkit.org/pkg/sessions for full documentation on underly
     // Change session storage configuration for MaxAge = 10 days.
     store.SetMaxAge(10*34*3600)
 
-
-## Notes
-
-#### July 18th, 2013
-
-* __Delete()__ should be considered deprecated since it is not exposed via the gorilla/sessions interface.  Set session.Options.MaxAge = -1 and call Save instead.

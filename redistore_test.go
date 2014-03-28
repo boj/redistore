@@ -88,7 +88,10 @@ func TestRediStore(t *testing.T) {
 	// Round 1 ----------------------------------------------------------------
 
 	// RedisStore
-	store := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	store, err := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
 	defer store.Close()
 
 	req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
@@ -162,7 +165,10 @@ func TestRediStore(t *testing.T) {
 	// Custom type
 
 	// RedisStore
-	store = NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	store, err = NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
 	defer store.Close()
 
 	req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
@@ -244,7 +250,10 @@ func TestRediStore(t *testing.T) {
 	// Round 6 ----------------------------------------------------------------
 	// RediStore change MaxLength of session
 
-	store = NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	store, err = NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
 	req, err = http.NewRequest("GET", "http://www.example.com", nil)
 	if err != nil {
 		t.Fatal("failed to create request", err)
@@ -267,7 +276,10 @@ func TestRediStore(t *testing.T) {
 	// Round 7 ----------------------------------------------------------------
 
 	// RedisStoreWithDB
-	store = NewRediStoreWithDB(10, "tcp", ":6379", "", "1", []byte("secret-key"))
+	store, err = NewRediStoreWithDB(10, "tcp", ":6379", "", "1", []byte("secret-key"))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
 	defer store.Close()
 
 	req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
@@ -308,9 +320,33 @@ func TestRediStore(t *testing.T) {
 	}
 }
 
+func TestPingGoodPort(t *testing.T) {
+	store, _ := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	defer store.Close()
+	ok, err := store.ping()
+	if err != nil {
+		t.Error(err.Error())
+	}
+	if !ok {
+		t.Error("Expected server to PONG")
+	}
+}
+
+func TestPingBadPort(t *testing.T) {
+	store, _ := NewRediStore(10, "tcp", ":6378", "", []byte("secret-key"))
+	defer store.Close()
+	_, err := store.ping()
+	if err == nil {
+		t.Error("Expected error")
+	}
+}
+
 func ExampleRediStore() {
 	// RedisStore
-	store := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	store, err := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	if err != nil {
+		panic(err)
+	}
 	defer store.Close()
 }
 
