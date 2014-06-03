@@ -46,5 +46,5 @@ See http://www.gorillatoolkit.org/pkg/sessions for full documentation on underly
     }
 
     // Change session storage configuration for MaxAge = 10 days.
-    store.SetMaxAge(10*34*3600)
+    store.SetMaxAge(10*24*3600)
 
