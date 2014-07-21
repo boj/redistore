@@ -8,11 +8,11 @@ Depends on the [Redigo](https://github.com/garyburd/redigo) Redis library.
 
 ## Installation
 
-    go get github.com/boj/redistore
+    go get http://gopkg.in/boj/redistore.v1
 
 ## Documentation
 
-Available on [godoc.org](http://www.godoc.org/github.com/boj/redistore).
+Available on [godoc.org](http://www.godoc.org/http:/gopkg.in/boj/redistore.v1).
 
 See http://www.gorillatoolkit.org/pkg/sessions for full documentation on underlying interface.
 
