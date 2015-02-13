@@ -10,12 +10,13 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
-	"github.com/garyburd/redigo/redis"
-	"github.com/gorilla/securecookie"
-	"github.com/gorilla/sessions"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/garyburd/redigo/redis"
+	"github.com/gorilla/securecookie"
+	"github.com/gorilla/sessions"
 )
 
 // Amount of time for cookies/redis keys to expire.
@@ -23,7 +24,7 @@ var sessionExpire = 86400 * 30
 
 // RediStore stores sessions in a redis backend.
 type RediStore struct {
-	Pool          *redis.Pool
+	Pool          *RedisPool
 	Codecs        []securecookie.Codec
 	Options       *sessions.Options // default configuration
 	DefaultMaxAge int               // default Redis TTL for a MaxAge == 0 session
@@ -82,42 +83,44 @@ func dial(network, address, password string) (redis.Conn, error) {
 // NewRediStore returns a new RediStore.
 // size: maximum number of idle connections.
 func NewRediStore(size int, network, address, password string, keyPairs ...[]byte) (*RediStore, error) {
-	return NewRediStoreWithPool(&redis.Pool{
-		MaxIdle:     size,
-		IdleTimeout: 240 * time.Second,
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
+	return NewRediStoreWithPool(&RedisPool{
+		Pool: redis.Pool{
+			MaxIdle:     size,
+			IdleTimeout: 240 * time.Second,
+			TestOnBorrow: func(c redis.Conn, t time.Time) error {
+				_, err := c.Do("PING")
+				return err
+			},
+			Dial: func() (redis.Conn, error) {
+				return dial(network, address, password)
+			},
 		},
-		Dial: func() (redis.Conn, error) {
-			return dial(network, address, password)
-		},
+		SelectedDatabase: "0",
 	}, keyPairs...)
 }
 
 // NewRedisStoreWithDB - like NewRedisStore but accepts `DB` parameter to select
 // redis DB instead of using the default one ("0")
 func NewRediStoreWithDB(size int, network, address, password, DB string, keyPairs ...[]byte) (*RediStore, error) {
-	rs, _ := NewRediStore(size, network, address, password, keyPairs...)
-	rs.Pool.Dial = func() (redis.Conn, error) {
-		c, err := dial(network, address, password)
-		if err != nil {
-			return c, err
-		}
-		if _, err := c.Do("SELECT", DB); err != nil {
-			c.Close()
-			return nil, err
-		}
-		return c, err
-	}
-	_, err := rs.ping()
-	return rs, err
+	return NewRediStoreWithPool(&RedisPool{
+		Pool: redis.Pool{
+			MaxIdle:     size,
+			IdleTimeout: 240 * time.Second,
+			TestOnBorrow: func(c redis.Conn, t time.Time) error {
+				_, err := c.Do("PING")
+				return err
+			},
+			Dial: func() (redis.Conn, error) {
+				return dial(network, address, password)
+			},
+		},
+		SelectedDatabase: DB,
+	}, keyPairs...)
 }
 
-// NewRediStoreWithPool instantiates a RediStore with a *redis.Pool passed in.
-func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, error) {
+// NewRediStoreWithPool instantiates a RediStore with a *RedisPool passed in.
+func NewRediStoreWithPool(pool *RedisPool, keyPairs ...[]byte) (*RediStore, error) {
 	rs := &RediStore{
-		// http://godoc.org/github.com/garyburd/redigo/redis#Pool
 		Pool:   pool,
 		Codecs: securecookie.CodecsFromPairs(keyPairs...),
 		Options: &sessions.Options{
@@ -207,6 +210,19 @@ func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sess
 		delete(session.Values, k)
 	}
 	return nil
+}
+
+// RedisPool implementes the redis.Pool struct, but stores the selected database separately, thus allowing for new clients to select it when connecting
+type RedisPool struct {
+	redis.Pool
+	SelectedDatabase string
+}
+
+// Get returns a new connection from the RedisPool, selecting the chosen database for each request
+func (p *RedisPool) Get() redis.Conn {
+	conn := p.Pool.Get()
+	conn.Do("SELECT", p.SelectedDatabase)
+	return conn
 }
 
 // ping does an internal ping against a server to check if it is alive.
