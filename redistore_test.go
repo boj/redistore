@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/gob"
-	"github.com/gorilla/sessions"
+	"github.com/outrightmental/go-sessions"
 	"net/http"
 	"net/http/httptest"
 	"testing"
