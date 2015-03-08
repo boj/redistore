@@ -35,13 +35,13 @@ See http://www.gorillatoolkit.org/pkg/sessions for full documentation on underly
     session.Values["foo"] = "bar"
 
     // Save.
-    if err = sessions.Save(req, rsp); err != nil {
+    if err = session.Save(req, rsp); err != nil {
         t.Fatalf("Error saving session: %v", err)
     }
 
     // Delete session.
     session.Options.MaxAge = -1
-    if err = sessions.Save(req, rsp); err != nil {
+    if err = session.Save(req, rsp); err != nil {
         t.Fatalf("Error saving session: %v", err)
     }
 
