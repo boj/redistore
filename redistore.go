@@ -95,23 +95,38 @@ func NewRediStore(size int, network, address, password string, keyPairs ...[]byt
 	}, keyPairs...)
 }
 
-// NewRedisStoreWithDB - like NewRedisStore but accepts `DB` parameter to select
-// redis DB instead of using the default one ("0")
-func NewRediStoreWithDB(size int, network, address, password, DB string, keyPairs ...[]byte) (*RediStore, error) {
-	rs, _ := NewRediStore(size, network, address, password, keyPairs...)
-	rs.Pool.Dial = func() (redis.Conn, error) {
-		c, err := dial(network, address, password)
-		if err != nil {
-			return c, err
-		}
-		if _, err := c.Do("SELECT", DB); err != nil {
+func dialWithDB(network, address, password, DB string) (redis.Conn, error) {
+	c, err := redis.Dial(network, address)
+	if err != nil {
+		return nil, err
+	}
+	if password != "" {
+		if _, err := c.Do("AUTH", password); err != nil {
 			c.Close()
 			return nil, err
 		}
-		return c, err
 	}
-	_, err := rs.ping()
-	return rs, err
+	if _, err := c.Do("SELECT", DB); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return c, err
+}
+
+// NewRedisStoreWithDB - like NewRedisStore but accepts `DB` parameter to select
+// redis DB instead of using the default one ("0")
+func NewRediStoreWithDB(size int, network, address, password, DB string, keyPairs ...[]byte) (*RediStore, error) {
+	return NewRediStoreWithPool(&redis.Pool{
+		MaxIdle:     size,
+		IdleTimeout: 240 * time.Second,
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+		Dial: func() (redis.Conn, error) {
+			return dialWithDB(network, address, password, DB)
+		},
+	}, keyPairs...)
 }
 
 // NewRediStoreWithPool instantiates a RediStore with a *redis.Pool passed in.
