@@ -61,11 +61,11 @@ func (s JSONSerializer) Deserialize(d []byte, ss *sessions.Session) error {
 	return nil
 }
 
-// GOBSerializer uses gob package to encode the session map
-type GOBSerializer struct{}
+// GobSerializer uses gob package to encode the session map
+type GobSerializer struct{}
 
 // Serialize using gob
-func (s GOBSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
+func (s GobSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
 	err := enc.Encode(ss.Values)
@@ -76,7 +76,7 @@ func (s GOBSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 }
 
 // Deserialize back to map[interface{}]interface{}
-func (s GOBSerializer) Deserialize(d []byte, ss *sessions.Session) error {
+func (s GobSerializer) Deserialize(d []byte, ss *sessions.Session) error {
 	dec := gob.NewDecoder(bytes.NewBuffer(d))
 	return dec.Decode(&ss.Values)
 }
@@ -214,7 +214,7 @@ func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, err
 		DefaultMaxAge: 60 * 20, // 20 minutes seems like a reasonable default
 		maxLength:     4096,
 		keyPrefix:     "session_",
-		serializer:    GOBSerializer{},
+		serializer:    GobSerializer{},
 	}
 	_, err := rs.ping()
 	return rs, err
