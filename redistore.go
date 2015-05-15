@@ -8,18 +8,78 @@ import (
 	"bytes"
 	"encoding/base32"
 	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/garyburd/redigo/redis"
-	"github.com/gorilla/securecookie"
-	"github.com/gorilla/sessions"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/garyburd/redigo/redis"
+	"github.com/gorilla/securecookie"
+	"github.com/gorilla/sessions"
 )
 
 // Amount of time for cookies/redis keys to expire.
 var sessionExpire = 86400 * 30
+
+// SessionSerializer provides an interface hook for alternative serializers
+type SessionSerializer interface {
+	Deserialize(d []byte, ss *sessions.Session) error
+	Serialize(ss *sessions.Session) ([]byte, error)
+}
+
+// JSONSerializer encode the session map to JSON.
+type JSONSerializer struct{}
+
+// Serialize to JSON. Will err if there are unmarshalable key values
+func (s JSONSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
+	m := make(map[string]interface{}, len(ss.Values))
+	for k, v := range ss.Values {
+		ks, ok := k.(string)
+		if !ok {
+			err := fmt.Errorf("Non-string key value, cannot serialize session to JSON: %v", k)
+			fmt.Printf("redistore.JSONSerializer.serialize() Error: %v", err)
+			return nil, err
+		}
+		m[ks] = v
+	}
+	return json.Marshal(m)
+}
+
+// Deserialize back to map[string]interface{}
+func (s JSONSerializer) Deserialize(d []byte, ss *sessions.Session) error {
+	m := make(map[string]interface{})
+	err := json.Unmarshal(d, &m)
+	if err != nil {
+		fmt.Printf("redistore.JSONSerializer.deserialize() Error: %v", err)
+		return err
+	}
+	for k, v := range m {
+		ss.Values[k] = v
+	}
+	return nil
+}
+
+// GOBSerializer uses gob package to encode the session map
+type GOBSerializer struct{}
+
+// Serialize using gob
+func (s GOBSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	enc := gob.NewEncoder(buf)
+	err := enc.Encode(ss.Values)
+	if err == nil {
+		return buf.Bytes(), nil
+	}
+	return nil, err
+}
+
+// Deserialize back to map[interface{}]interface{}
+func (s GOBSerializer) Deserialize(d []byte, ss *sessions.Session) error {
+	dec := gob.NewDecoder(bytes.NewBuffer(d))
+	return dec.Decode(&ss.Values)
+}
 
 // RediStore stores sessions in a redis backend.
 type RediStore struct {
@@ -28,6 +88,8 @@ type RediStore struct {
 	Options       *sessions.Options // default configuration
 	DefaultMaxAge int               // default Redis TTL for a MaxAge == 0 session
 	maxLength     int
+	keyPrefix     string
+	serializer    SessionSerializer
 }
 
 // SetMaxLength sets RediStore.maxLength if the `l` argument is greater or equal 0
@@ -40,6 +102,16 @@ func (s *RediStore) SetMaxLength(l int) {
 	if l >= 0 {
 		s.maxLength = l
 	}
+}
+
+// SetKeyPrefix set the prefix
+func (s *RediStore) SetKeyPrefix(p string) {
+	s.keyPrefix = p
+}
+
+// SetSerializer sets the serializer
+func (s *RediStore) SetSerializer(ss SessionSerializer) {
+	s.serializer = ss
 }
 
 // SetMaxAge restricts the maximum age, in seconds, of the session record
@@ -60,7 +132,7 @@ func (s *RediStore) SetMaxAge(v int) {
 		if c, ok = s.Codecs[i].(*securecookie.SecureCookie); ok {
 			c.MaxAge(v)
 		} else {
-			fmt.Printf("Can't change MaxAge on codec %t\n", s.Codecs[i])
+			fmt.Printf("Can't change MaxAge on codec %v\n", s.Codecs[i])
 		}
 	}
 }
@@ -113,7 +185,7 @@ func dialWithDB(network, address, password, DB string) (redis.Conn, error) {
 	return c, err
 }
 
-// NewRedisStoreWithDB - like NewRedisStore but accepts `DB` parameter to select
+// NewRediStoreWithDB - like NewRedisStore but accepts `DB` parameter to select
 // redis DB instead of using the default one ("0")
 func NewRediStoreWithDB(size int, network, address, password, DB string, keyPairs ...[]byte) (*RediStore, error) {
 	return NewRediStoreWithPool(&redis.Pool{
@@ -141,6 +213,8 @@ func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, err
 		},
 		DefaultMaxAge: 60 * 20, // 20 minutes seems like a reasonable default
 		maxLength:     4096,
+		keyPrefix:     "session_",
+		serializer:    GOBSerializer{},
 	}
 	_, err := rs.ping()
 	return rs, err
@@ -210,7 +284,7 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
 	conn := s.Pool.Get()
 	defer conn.Close()
-	if _, err := conn.Do("DEL", "session_"+session.ID); err != nil {
+	if _, err := conn.Do("DEL", s.keyPrefix+session.ID); err != nil {
 		return err
 	}
 	// Set cookie to expire.
@@ -237,13 +311,10 @@ func (s *RediStore) ping() (bool, error) {
 
 // save stores the session in redis.
 func (s *RediStore) save(session *sessions.Session) error {
-	buf := new(bytes.Buffer)
-	enc := gob.NewEncoder(buf)
-	err := enc.Encode(session.Values)
+	b, err := s.serializer.Serialize(session)
 	if err != nil {
 		return err
 	}
-	b := buf.Bytes()
 	if s.maxLength != 0 && len(b) > s.maxLength {
 		return errors.New("SessionStore: the value to store is too big")
 	}
@@ -256,7 +327,7 @@ func (s *RediStore) save(session *sessions.Session) error {
 	if age == 0 {
 		age = s.DefaultMaxAge
 	}
-	_, err = conn.Do("SETEX", "session_"+session.ID, age, b)
+	_, err = conn.Do("SETEX", s.keyPrefix+session.ID, age, b)
 	return err
 }
 
@@ -268,7 +339,7 @@ func (s *RediStore) load(session *sessions.Session) (bool, error) {
 	if err := conn.Err(); err != nil {
 		return false, err
 	}
-	data, err := conn.Do("GET", "session_"+session.ID)
+	data, err := conn.Do("GET", s.keyPrefix+session.ID)
 	if err != nil {
 		return false, err
 	}
@@ -279,15 +350,14 @@ func (s *RediStore) load(session *sessions.Session) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	dec := gob.NewDecoder(bytes.NewBuffer(b))
-	return true, dec.Decode(&session.Values)
+	return true, s.serializer.Deserialize(b, session)
 }
 
 // delete removes keys from redis if MaxAge<0
 func (s *RediStore) delete(session *sessions.Session) error {
 	conn := s.Pool.Get()
 	defer conn.Close()
-	if _, err := conn.Do("DEL", "session_"+session.ID); err != nil {
+	if _, err := conn.Do("DEL", s.keyPrefix+session.ID); err != nil {
 		return err
 	}
 	return nil
