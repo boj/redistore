@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/gob"
-	"github.com/gorilla/sessions"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/gorilla/sessions"
 )
 
 // ----------------------------------------------------------------------------
@@ -318,6 +319,54 @@ func TestRediStore(t *testing.T) {
 	if flashes[0] != "foo" {
 		t.Errorf("Expected foo,bar; Got %v", flashes)
 	}
+
+	// Round 8 ----------------------------------------------------------------
+	// JSONSerializer
+
+	// RedisStore
+	store, err = NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	store.SetSerializer(JSONSerializer{})
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	defer store.Close()
+
+	req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
+	rsp = NewRecorder()
+	// Get a session.
+	if session, err = store.Get(req, "session-key"); err != nil {
+		t.Fatalf("Error getting session: %v", err)
+	}
+	// Get a flash.
+	flashes = session.Flashes()
+	if len(flashes) != 0 {
+		t.Errorf("Expected empty flashes; Got %v", flashes)
+	}
+	// Add some flashes.
+	session.AddFlash("foo")
+	// Save.
+	if err = sessions.Save(req, rsp); err != nil {
+		t.Fatalf("Error saving session: %v", err)
+	}
+	hdr = rsp.Header()
+	cookies, ok = hdr["Set-Cookie"]
+	if !ok || len(cookies) != 1 {
+		t.Fatalf("No cookies. Header:", hdr)
+	}
+
+	// Get a session.
+	req.Header.Add("Cookie", cookies[0])
+	if session, err = store.Get(req, "session-key"); err != nil {
+		t.Fatalf("Error getting session: %v", err)
+	}
+	// Check all saved values.
+	flashes = session.Flashes()
+	if len(flashes) != 1 {
+		t.Fatalf("Expected flashes; Got %v", flashes)
+	}
+	if flashes[0] != "foo" {
+		t.Errorf("Expected foo,bar; Got %v", flashes)
+	}
 }
 
 func TestPingGoodPort(t *testing.T) {
@@ -333,7 +382,7 @@ func TestPingGoodPort(t *testing.T) {
 }
 
 func TestPingBadPort(t *testing.T) {
-	store, _ := NewRediStore(10, "tcp", ":6378", "", []byte("secret-key"))
+	store, _ := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
 	defer store.Close()
 	_, err := store.ping()
 	if err == nil {
