@@ -382,7 +382,7 @@ func TestPingGoodPort(t *testing.T) {
 }
 
 func TestPingBadPort(t *testing.T) {
-	store, _ := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	store, _ := NewRediStore(10, "tcp", ":6378", "", []byte("secret-key"))
 	defer store.Close()
 	_, err := store.ping()
 	if err == nil {
