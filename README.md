@@ -1,5 +1,7 @@
 # redistore
 
+[![Build Status](https://drone.io/github.com/boj/redistore/status.png)](https://drone.io/github.com/boj/redistore/latest)
+
 A session store backend for [gorilla/sessions](http://www.gorillatoolkit.org/pkg/sessions) - [src](https://github.com/gorilla/sessions).
 
 ## Requirements
