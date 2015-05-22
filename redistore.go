@@ -229,7 +229,14 @@ func (s *RediStore) Close() error {
 //
 // See gorilla/sessions FilesystemStore.Get().
 func (s *RediStore) Get(r *http.Request, name string) (*sessions.Session, error) {
-	return sessions.GetRegistry(r).Get(s, name)
+	sesh, err := sessions.GetRegistry(r).Get(s, name)
+
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = s.load(sesh) // always get the latest from redis
+	return sesh, err
 }
 
 // New returns a session for the given name without adding it to the registry.
