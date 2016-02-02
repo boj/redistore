@@ -301,7 +301,6 @@ func (s *RediStore) Refresh(r *http.Request, w http.ResponseWriter, session *ses
 	}
 
 	// Expire cookie
-	// Could use Save func here?
 	options := *session.Options
 	options.MaxAge = age
 	encoded, err := securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
