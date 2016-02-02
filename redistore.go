@@ -284,6 +284,35 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 	return nil
 }
 
+// Refresh updates the expiration on the cookie and the data bag in Redis.
+func (s *RediStore) Refresh(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+	conn := s.Pool.Get()
+	defer conn.Close()
+
+	age := session.Options.MaxAge
+	if age == 0 {
+		age = s.DefaultMaxAge
+	}
+
+	// Refresh redis expiration
+	_, err := conn.Do("EXPIRE", fmt.Sprintf("%s%s", s.keyPrefix, session.ID), age)
+	if err != nil {
+		return err
+	}
+
+	// Expire cookie
+	// Could
+	options := *session.Options
+	options.MaxAge = age
+	encoded, err := securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
+	if err != nil {
+		return err
+	}
+	http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, &options))
+
+	return nil
+}
+
 // Delete removes the session from redis, and sets the cookie to expire.
 //
 // WARNING: This method should be considered deprecated since it is not exposed via the gorilla/sessions interface.
