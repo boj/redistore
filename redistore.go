@@ -168,15 +168,9 @@ func NewRediStore(size int, network, address, password string, keyPairs ...[]byt
 }
 
 func dialWithDB(network, address, password, DB string) (redis.Conn, error) {
-	c, err := redis.Dial(network, address)
+	c, err := dial(network, address, password)
 	if err != nil {
 		return nil, err
-	}
-	if password != "" {
-		if _, err := c.Do("AUTH", password); err != nil {
-			c.Close()
-			return nil, err
-		}
 	}
 	if _, err := c.Do("SELECT", DB); err != nil {
 		c.Close()
@@ -284,6 +278,34 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 	return nil
 }
 
+// Refresh updates the expiration on the cookie and the data bag in Redis.
+func (s *RediStore) Refresh(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+	conn := s.Pool.Get()
+	defer conn.Close()
+
+	age := session.Options.MaxAge
+	if age == 0 {
+		age = s.DefaultMaxAge
+	}
+
+	// Refresh redis expiration
+	_, err := conn.Do("EXPIRE", s.generateSessionKey(session.ID), age)
+	if err != nil {
+		return err
+	}
+
+	// Expire cookie
+	options := *session.Options
+	options.MaxAge = age
+	encoded, err := securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
+	if err != nil {
+		return err
+	}
+	http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, &options))
+
+	return nil
+}
+
 // Delete removes the session from redis, and sets the cookie to expire.
 //
 // WARNING: This method should be considered deprecated since it is not exposed via the gorilla/sessions interface.
@@ -291,7 +313,7 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
 	conn := s.Pool.Get()
 	defer conn.Close()
-	if _, err := conn.Do("DEL", s.keyPrefix+session.ID); err != nil {
+	if _, err := conn.Do("DEL", s.generateSessionKey(session.ID)); err != nil {
 		return err
 	}
 	// Set cookie to expire.
@@ -334,7 +356,7 @@ func (s *RediStore) save(session *sessions.Session) error {
 	if age == 0 {
 		age = s.DefaultMaxAge
 	}
-	_, err = conn.Do("SETEX", s.keyPrefix+session.ID, age, b)
+	_, err = conn.Do("SETEX", s.generateSessionKey(session.ID), age, b)
 	return err
 }
 
@@ -346,7 +368,7 @@ func (s *RediStore) load(session *sessions.Session) (bool, error) {
 	if err := conn.Err(); err != nil {
 		return false, err
 	}
-	data, err := conn.Do("GET", s.keyPrefix+session.ID)
+	data, err := conn.Do("GET", s.generateSessionKey(session.ID))
 	if err != nil {
 		return false, err
 	}
@@ -364,8 +386,12 @@ func (s *RediStore) load(session *sessions.Session) (bool, error) {
 func (s *RediStore) delete(session *sessions.Session) error {
 	conn := s.Pool.Get()
 	defer conn.Close()
-	if _, err := conn.Do("DEL", s.keyPrefix+session.ID); err != nil {
+	if _, err := conn.Do("DEL", s.generateSessionKey(session.ID)); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (s *RediStore) generateSessionKey(sessionId string) string {
+	return s.keyPrefix + sessionId
 }
