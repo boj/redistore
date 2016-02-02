@@ -361,20 +361,24 @@ func (s *RediStore) save(session *sessions.Session) error {
 }
 
 // load reads the session from redis.
-// returns true if there is a sessoin data in DB
+// returns true if there is a session data in DB
 func (s *RediStore) load(session *sessions.Session) (bool, error) {
 	conn := s.Pool.Get()
 	defer conn.Close()
+
 	if err := conn.Err(); err != nil {
 		return false, err
 	}
+
 	data, err := conn.Do("GET", s.generateSessionKey(session.ID))
 	if err != nil {
 		return false, err
 	}
 	if data == nil {
+		session.Values = map[interface{}]interface{}{}
 		return false, nil // no data was associated with this key
 	}
+
 	b, err := redis.Bytes(data, err)
 	if err != nil {
 		return false, err
