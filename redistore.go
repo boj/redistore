@@ -168,15 +168,9 @@ func NewRediStore(size int, network, address, password string, keyPairs ...[]byt
 }
 
 func dialWithDB(network, address, password, DB string) (redis.Conn, error) {
-	c, err := redis.Dial(network, address)
+	c, err := dial(network, address, password)
 	if err != nil {
 		return nil, err
-	}
-	if password != "" {
-		if _, err := c.Do("AUTH", password); err != nil {
-			c.Close()
-			return nil, err
-		}
 	}
 	if _, err := c.Do("SELECT", DB); err != nil {
 		c.Close()
