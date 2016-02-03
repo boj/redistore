@@ -375,8 +375,7 @@ func (s *RediStore) load(session *sessions.Session) (bool, error) {
 		return false, err
 	}
 	if data == nil {
-		session.Values = map[interface{}]interface{}{}
-		return false, nil // no data was associated with this key
+		return false, fmt.Errorf("No redis data for session") // no data was associated with this key
 	}
 
 	b, err := redis.Bytes(data, err)
