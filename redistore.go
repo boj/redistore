@@ -347,6 +347,7 @@ func (s *RediStore) save(session *sessions.Session) error {
 	if s.maxLength != 0 && len(b) > s.maxLength {
 		return errors.New("SessionStore: the value to store is too big")
 	}
+
 	conn := s.Pool.Get()
 	defer conn.Close()
 	if err = conn.Err(); err != nil {
@@ -356,6 +357,7 @@ func (s *RediStore) save(session *sessions.Session) error {
 	if age == 0 {
 		age = s.DefaultMaxAge
 	}
+
 	_, err = conn.Do("SETEX", s.generateSessionKey(session.ID), age, b)
 	return err
 }
@@ -382,6 +384,7 @@ func (s *RediStore) load(session *sessions.Session) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
 	return true, s.serializer.Deserialize(b, session)
 }
 
