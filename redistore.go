@@ -347,6 +347,7 @@ func (s *RediStore) save(session *sessions.Session) error {
 	if s.maxLength != 0 && len(b) > s.maxLength {
 		return errors.New("SessionStore: the value to store is too big")
 	}
+
 	conn := s.Pool.Get()
 	defer conn.Close()
 	if err = conn.Err(); err != nil {
@@ -356,29 +357,34 @@ func (s *RediStore) save(session *sessions.Session) error {
 	if age == 0 {
 		age = s.DefaultMaxAge
 	}
+
 	_, err = conn.Do("SETEX", s.generateSessionKey(session.ID), age, b)
 	return err
 }
 
 // load reads the session from redis.
-// returns true if there is a sessoin data in DB
+// returns true if there is a session data in DB
 func (s *RediStore) load(session *sessions.Session) (bool, error) {
 	conn := s.Pool.Get()
 	defer conn.Close()
+
 	if err := conn.Err(); err != nil {
 		return false, err
 	}
+
 	data, err := conn.Do("GET", s.generateSessionKey(session.ID))
 	if err != nil {
 		return false, err
 	}
 	if data == nil {
-		return false, nil // no data was associated with this key
+		return false, fmt.Errorf("No redis data for session") // no data was associated with this key
 	}
+
 	b, err := redis.Bytes(data, err)
 	if err != nil {
 		return false, err
 	}
+
 	return true, s.serializer.Deserialize(b, session)
 }
 
