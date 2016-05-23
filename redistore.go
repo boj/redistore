@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
@@ -245,11 +246,23 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 	session.IsNew = true
 	if c, errCookie := r.Cookie(name); errCookie == nil {
 		err = securecookie.DecodeMulti(name, c.Value, &session.ID, s.Codecs...)
+
 		if err == nil {
 			ok, err := s.load(session)
 			session.IsNew = !(err == nil && ok) // not new if no error and data available
 		}
+
+		// Log cases where the session does not exist but the client still has a cookie.
+		// Most likely this is not malicious.
+		if session.IsNew && session.ID != "" {
+			logrus.WithFields(logrus.Fields{
+				"requestURI": r.RequestURI,
+				"referer":    r.Referer(),
+				"clientIP":   fmt.Sprintf("%s|%s|%s", r.Header.Get("X-Real-Ip"), r.Header.Get("X-Forwarded-For"), r.RemoteAddr),
+			}).Error("Cookie contained SessionID which did not exist.")
+		}
 	}
+
 	return session, err
 }
 
