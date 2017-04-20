@@ -390,6 +390,25 @@ func TestPingBadPort(t *testing.T) {
 	}
 }
 
+func TestSessionSave(t *testing.T) {
+	store := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	req, err := http.NewRequest("GET", "http://www.example.com", nil)
+	if err != nil {
+		t.Fatal("failed to create request", err)
+	}
+	w := httptest.NewRecorder()
+
+	session, err := store.New(req, "my session")
+	if err != nil || session.ID == "" {
+		t.Fatal("Unexpected condition on store.New: %s", err)
+	}
+
+	session.ID = ""
+	if err = session.Save(req, w); err != ErrEmptySessionID {
+		t.Fatal("Unexpected error on session.Save. Want: %s, Got: %s", ErrEmptySessionID, err)
+	}
+}
+
 func ExampleRediStore() {
 	// RedisStore
 	store, err := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))

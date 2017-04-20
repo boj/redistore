@@ -246,8 +246,13 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 			session.IsNew = !(err == nil && ok) // not new if no error and data available
 		}
 	}
+	if session.ID == "" {
+		session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
+	}
 	return session, err
 }
+
+var ErrEmptySessionID = errors.New("Empty session id")
 
 // Save adds a single session to the response.
 func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
@@ -257,20 +262,23 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 			return err
 		}
 		http.SetCookie(w, sessions.NewCookie(session.Name(), "", session.Options))
-	} else {
-		// Build an alphanumeric key for the redis store.
-		if session.ID == "" {
-			session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
-		}
-		if err := s.save(session); err != nil {
-			return err
-		}
-		encoded, err := securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
-		if err != nil {
-			return err
-		}
-		http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, session.Options))
+		return nil
 	}
+
+	if session.ID == "" {
+		return ErrEmptySessionID
+	}
+
+	if err := s.save(session); err != nil {
+		return err
+	}
+
+	encoded, err := securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
+	if err != nil {
+		return err
+	}
+	http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, session.Options))
+
 	return nil
 }
 
