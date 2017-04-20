@@ -223,7 +223,14 @@ func (s *RediStore) Close() error {
 //
 // See gorilla/sessions FilesystemStore.Get().
 func (s *RediStore) Get(r *http.Request, name string) (*sessions.Session, error) {
-	return sessions.GetRegistry(r).Get(s, name)
+	sesh, err := sessions.GetRegistry(r).Get(s, name)
+
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = s.load(sesh) // always get the latest from redis
+	return sesh, err
 }
 
 // New returns a session for the given name without adding it to the registry.
@@ -271,6 +278,35 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 		}
 		http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, session.Options))
 	}
+	return nil
+}
+
+// Refresh updates the expiration on the cookie and the data bag in Redis.
+func (s *RediStore) Refresh(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+	conn := s.Pool.Get()
+	defer conn.Close()
+
+	age := session.Options.MaxAge
+	if age == 0 {
+		age = s.DefaultMaxAge
+	}
+
+	// Refresh redis expiration
+	_, err := conn.Do("EXPIRE", fmt.Sprintf("%s%s", s.keyPrefix, session.ID), age)
+	if err != nil {
+		return err
+	}
+
+	// Expire cookie
+	// Could
+	options := *session.Options
+	options.MaxAge = age
+	encoded, err := securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
+	if err != nil {
+		return err
+	}
+	http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, &options))
+
 	return nil
 }
 
