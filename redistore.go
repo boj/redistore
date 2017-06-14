@@ -259,7 +259,7 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 				"requestURI": r.RequestURI,
 				"referer":    r.Referer(),
 				"clientIP":   fmt.Sprintf("%s|%s|%s", r.Header.Get("X-Real-Ip"), r.Header.Get("X-Forwarded-For"), r.RemoteAddr),
-			}).Error("Cookie contained SessionID which did not exist.")
+			}).Warn("Cookie contained SessionID which did not exist.")
 		}
 	}
 
