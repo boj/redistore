@@ -216,12 +216,12 @@ func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, err
 	return rs, err
 }
 
+// NewRedisClusterStore instantiates a RediStore with a *goRedisClient.ClusterClient passed in.
 func NewRedisClusterStore(
 	redisClusterClient *goRedisClient.ClusterClient,
 	keyPairs ...[]byte,
 ) (*RediStore, error) {
 	rs := &RediStore{
-		// http://godoc.org/github.com/garyburd/redigo/redis#Pool
 		RedisClient: redisClusterClient,
 		Codecs:      securecookie.CodecsFromPairs(keyPairs...),
 		Options: &sessions.Options{
