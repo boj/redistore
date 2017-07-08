@@ -237,7 +237,7 @@ func NewRedisClusterStore(
 	return rs, err
 }
 
-// Close closes the underlying *redis.Pool
+// Close closes the underlying *redis.Pool or *goRedisClient.ClusterClient
 func (s *RediStore) Close() error {
 	if s.RedisClient != nil {
 		return s.RedisClient.Close()
