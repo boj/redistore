@@ -367,6 +367,31 @@ func TestRediStore(t *testing.T) {
 	if flashes[0] != "foo" {
 		t.Errorf("Expected foo,bar; Got %v", flashes)
 	}
+
+	// Round 9 ----------------------------------------------------------------
+	// RediStore refresh session
+
+	store, err = NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	req, err = http.NewRequest("GET", "http://www.example.com", nil)
+	if err != nil {
+		t.Fatal("failed to create request", err)
+	}
+	w = httptest.NewRecorder()
+
+	session, err = store.New(req, "my session")
+	session.Values["big"] = make([]byte, base64.StdEncoding.DecodedLen(4096*2))
+	err = session.Save(req, w)
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+
+	err = store.Refresh(req, w, session)
+	if err != nil {
+		t.Fatal("failed to Refresh:", err)
+	}
 }
 
 func TestPingGoodPort(t *testing.T) {
