@@ -227,7 +227,7 @@ func (s *RediStore) Get(r *http.Request, name string) (*sessions.Session, error)
 	sesh, err := sessions.GetRegistry(r).Get(s, name)
 
 	if err != nil {
-		return nil, err
+		return sesh, err
 	}
 
 	_, err = s.load(sesh) // always get the latest from redis
