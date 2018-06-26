@@ -6,7 +6,7 @@ A session store backend for [gorilla/sessions](http://www.gorillatoolkit.org/pkg
 
 ## Requirements
 
-Depends on the [Redigo](https://github.com/garyburd/redigo) Redis library.
+Depends on the [Redigo](https://github.com/gomodule/redigo) Redis library.
 
 ## Installation
 
