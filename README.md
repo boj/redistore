@@ -1,6 +1,7 @@
 # redistore
 
-[![Build Status](https://drone.io/github.com/boj/redistore/status.png)](https://drone.io/github.com/boj/redistore/latest)
+[![GoDoc](https://godoc.org/github.com/boj/redistore?status.svg)](https://godoc.org/github.com/boj/redistore)
+[![Build Status](https://travis-ci.org/boj/redistore.svg?branch=master)](https://travis-ci.org/boj/redistore)
 
 A session store backend for [gorilla/sessions](http://www.gorillatoolkit.org/pkg/sessions) - [src](https://github.com/gorilla/sessions).
 
