@@ -1,6 +1,9 @@
 language: go
 sudo: false
 
+services:
+  - redis-server
+
 matrix:
   include:
     - go: 1.5
