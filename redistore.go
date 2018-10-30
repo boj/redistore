@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FZambia/sentinel"
 	"github.com/gomodule/redigo/redis"
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
@@ -212,6 +213,41 @@ func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, err
 	}
 	_, err := rs.ping()
 	return rs, err
+}
+
+// NewRedisStoreWithSentinel instantiates a RediStore with FZambia sentinel
+func NewRedisStoreWithSentinel(address []string, size int, masterName, network, password string, keyPairs ...[]byte) (*RediStore, error) {
+
+	sntnl := &sentinel.Sentinel{
+		Addrs:      address,
+		MasterName: masterName,
+		Dial: func(addr string) (redis.Conn, error) {
+			timeout := 500 * time.Microsecond
+			c, err := redis.DialTimeout(network, addr, timeout, timeout, timeout)
+			if nil != err {
+				return nil, err
+			}
+			return c, nil
+		},
+	}
+
+	pool := &redis.Pool{
+		MaxIdle:     size,
+		IdleTimeout: 240 * time.Second,
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+		Dial: func() (redis.Conn, error) {
+			masterAddr, err := sntnl.MasterAddr()
+			if err != nil {
+				return nil, err
+			}
+			return dial(network, masterAddr, password)
+		},
+	}
+
+	return NewRediStoreWithPool(pool, keyPairs...)
 }
 
 // Close closes the underlying *redis.Pool
