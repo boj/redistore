@@ -24,7 +24,7 @@ import (
 var sessionExpire = 86400 * 30
 
 // Default value of redis ttl when session's maxage is set to zero
-var defaultMaxAge = 60 * 20
+var defaultMaxAge = 86400
 
 // Set defaultMaxAge from outside
 func ChangeDefaultMaxAge(maxAge int) {
