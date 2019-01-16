@@ -23,6 +23,14 @@ import (
 // Amount of time for cookies/redis keys to expire.
 var sessionExpire = 86400 * 30
 
+// Default value of redis ttl when session's maxage is set to zero
+var defaultMaxAge = 60 * 20
+
+// Set defaultMaxAge from outside
+func ChangeDefaultMaxAge(maxAge int) {
+	defaultMaxAge = maxAge
+}
+
 // SessionSerializer provides an interface hook for alternative serializers
 type SessionSerializer interface {
 	Deserialize(d []byte, ss *sessions.Session) error
@@ -205,7 +213,7 @@ func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, err
 			Path:   "/",
 			MaxAge: sessionExpire,
 		},
-		DefaultMaxAge: 60 * 20, // 20 minutes seems like a reasonable default
+		DefaultMaxAge: defaultMaxAge,
 		maxLength:     4096,
 		keyPrefix:     "session_",
 		serializer:    GobSerializer{},
@@ -252,7 +260,7 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 // Save adds a single session to the response.
 func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
 	// Marked for deletion.
-	if session.Options.MaxAge <= 0 {
+	if session.Options.MaxAge < 0 {
 		if err := s.delete(session); err != nil {
 			return err
 		}
