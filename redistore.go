@@ -198,7 +198,7 @@ func NewRediStoreWithDB(size int, network, address, password, DB string, keyPair
 // NewRediStoreWithPool instantiates a RediStore with a *redis.Pool passed in.
 func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, error) {
 	rs := &RediStore{
-		// http://godoc.org/github.com/garyburd/redigo/redis#Pool
+		// http://godoc.org/github.com/gomodule/redigo/redis#Pool
 		Pool:   pool,
 		Codecs: securecookie.CodecsFromPairs(keyPairs...),
 		Options: &sessions.Options{
