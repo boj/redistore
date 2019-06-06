@@ -11,7 +11,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -163,6 +165,26 @@ func NewRediStore(size int, network, address, password string, keyPairs ...[]byt
 		},
 		Dial: func() (redis.Conn, error) {
 			return dial(network, address, password)
+		},
+	}, keyPairs...)
+}
+
+// NewRediStoreWithDebug returns a new RediStore with debug.
+// size: maximum number of idle connections.
+func NewRediStoreWithDebug(size int, network, address, password string, keyPairs ...[]byte) (*RediStore, error) {
+	return NewRediStoreWithPool(&redis.Pool{
+		MaxIdle:     size,
+		IdleTimeout: 240 * time.Second,
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+		Dial: func() (redis.Conn, error) {
+			c, err := dial(network, address, password)
+			if err != nil {
+				return nil, err
+			}
+			return redis.NewLoggingConn(c, log.New(os.Stdout, "", log.LstdFlags), "redis"), nil
 		},
 	}, keyPairs...)
 }
