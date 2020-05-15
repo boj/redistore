@@ -389,7 +389,7 @@ func TestRediStore(t *testing.T) {
 	// NewRediStoreWithURL
 	{
 		addr := setupFullURL()
-		store, err := NewRediStoreWithURL(10,  addr, []byte("secret-key"))
+		store, err := NewRediStoreWithURL(10, addr, []byte("secret-key"))
 		if err != nil {
 			t.Fatal(err.Error())
 		}
