@@ -195,6 +195,21 @@ func NewRediStoreWithDB(size int, network, address, password, DB string, keyPair
 	}, keyPairs...)
 }
 
+// NewRediStoreWithURL - like NewRedisStore but accepts full redis url
+func NewRediStoreWithURL(size int, url string, keyPairs ...[]byte) (*RediStore, error) {
+	return NewRediStoreWithPool(&redis.Pool{
+		MaxIdle:     size,
+		IdleTimeout: 240 * time.Second,
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+		Dial: func() (redis.Conn, error) {
+			return redis.DialURL(url)
+		},
+	}, keyPairs...)
+}
+
 // NewRediStoreWithPool instantiates a RediStore with a *redis.Pool passed in.
 func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, error) {
 	rs := &RediStore{
