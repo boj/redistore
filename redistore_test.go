@@ -32,6 +32,20 @@ func setup() string {
 	return fmt.Sprintf("%s:%s", addr, port)
 }
 
+func setupFullURL() string {
+	addr := os.Getenv("REDIS_HOST")
+	if addr == "" {
+		addr = defaultRedisHost
+	}
+
+	port := os.Getenv("REDIS_PORT")
+	if port == "" {
+		port = defaultRedisPort
+	}
+
+	return fmt.Sprintf("redis://%s:%s", addr, port)
+}
+
 // ----------------------------------------------------------------------------
 // ResponseRecorder
 // ----------------------------------------------------------------------------
@@ -371,6 +385,55 @@ func TestRediStore(t *testing.T) {
 	}
 
 	// Round 8 ----------------------------------------------------------------
+
+	// NewRediStoreWithURL
+	{
+		addr := setupFullURL()
+		store, err := NewRediStoreWithURL(10,  addr, []byte("secret-key"))
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		defer store.Close()
+
+		req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
+		rsp = NewRecorder()
+		// Get a session. Using the same key as previously, but on different DB
+		if session, err = store.Get(req, "session-key"); err != nil {
+			t.Fatalf("Error getting session: %v", err)
+		}
+		// Get a flash.
+		flashes = session.Flashes()
+		if len(flashes) != 0 {
+			t.Errorf("Expected empty flashes; Got %v", flashes)
+		}
+		// Add some flashes.
+		session.AddFlash("foo")
+		// Save.
+		if err = sessions.Save(req, rsp); err != nil {
+			t.Fatalf("Error saving session: %v", err)
+		}
+		hdr = rsp.Header()
+		cookies, ok = hdr["Set-Cookie"]
+		if !ok || len(cookies) != 1 {
+			t.Fatalf("No cookies. Header: %s", hdr)
+		}
+
+		// Get a session.
+		req.Header.Add("Cookie", cookies[0])
+		if session, err = store.Get(req, "session-key"); err != nil {
+			t.Fatalf("Error getting session: %v", err)
+		}
+		// Check all saved values.
+		flashes = session.Flashes()
+		if len(flashes) != 1 {
+			t.Fatalf("Expected flashes; Got %v", flashes)
+		}
+		if flashes[0] != "foo" {
+			t.Errorf("Expected foo,bar; Got %v", flashes)
+		}
+	}
+
+	// Round 9 ----------------------------------------------------------------
 	// JSONSerializer
 
 	// RedisStore
