@@ -19,7 +19,8 @@ install:
   - # skip
 
 script:
-  - export GOROOT=/usr/local/go
+  - export PATH=$PATH:$HOME/go/bin:/usr/local/go/bin
+  - export GOPATH=$HOME/go
   - go get -t -v ./...
   - diff -u <(echo -n) <(gofmt -d .)
   - go tool vet .
