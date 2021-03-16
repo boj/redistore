@@ -6,8 +6,6 @@ services:
 
 matrix:
   include:
-    - go: 1.5
-    - go: 1.6
     - go: 1.7
     - go: 1.8
     - go: 1.9
@@ -19,8 +17,6 @@ install:
   - # skip
 
 script:
-  - export PATH=$PATH:$HOME/go/bin:/usr/local/go/bin
-  - export GOPATH=$HOME/go
   - go get -t -v ./...
   - diff -u <(echo -n) <(gofmt -d .)
   - go tool vet .
