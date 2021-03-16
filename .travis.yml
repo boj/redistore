@@ -19,6 +19,7 @@ install:
   - # skip
 
 script:
+  - export GOROOT=/usr/local/go
   - go get -t -v ./...
   - diff -u <(echo -n) <(gofmt -d .)
   - go tool vet .
