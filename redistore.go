@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/base32"
 	"encoding/gob"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,60 +24,87 @@ var sessionExpire = 86400 * 30
 
 // SessionSerializer provides an interface hook for alternative serializers
 type SessionSerializer interface {
-	Deserialize(d []byte, ss *sessions.Session) error
-	Serialize(ss *sessions.Session) ([]byte, error)
+	Deserialize(d map[string]string, ss *sessions.Session) error
+	Serialize(ss *sessions.Session) (map[string]string, error)
 }
 
 // JSONSerializer encode the session map to JSON.
-type JSONSerializer struct{}
+//type JSONSerializer struct{}
 
 // Serialize to JSON. Will err if there are unmarshalable key values
-func (s JSONSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
-	m := make(map[string]interface{}, len(ss.Values))
-	for k, v := range ss.Values {
-		ks, ok := k.(string)
-		if !ok {
-			err := fmt.Errorf("Non-string key value, cannot serialize session to JSON: %v", k)
-			fmt.Printf("redistore.JSONSerializer.serialize() Error: %v", err)
-			return nil, err
-		}
-		m[ks] = v
-	}
-	return json.Marshal(m)
-}
+//func (s JSONSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
+//	m := make(map[string]interface{}, len(ss.Values))
+//	for k, v := range ss.Values {
+//		ks, ok := k.(string)
+//		if !ok {
+//			err := fmt.Errorf("Non-string key value, cannot serialize session to JSON: %v", k)
+//			fmt.Printf("redistore.JSONSerializer.serialize() Error: %v", err)
+//			return nil, err
+//		}
+//		m[ks] = v
+//	}
+//	return json.Marshal(m)
+//}
 
 // Deserialize back to map[string]interface{}
-func (s JSONSerializer) Deserialize(d []byte, ss *sessions.Session) error {
-	m := make(map[string]interface{})
-	err := json.Unmarshal(d, &m)
-	if err != nil {
-		fmt.Printf("redistore.JSONSerializer.deserialize() Error: %v", err)
-		return err
-	}
-	for k, v := range m {
-		ss.Values[k] = v
-	}
-	return nil
+//func (s JSONSerializer) Deserialize(d []byte, ss *sessions.Session) error {
+//	m := make(map[string]interface{})
+//	err := json.Unmarshal(d, &m)
+//	if err != nil {
+//		fmt.Printf("redistore.JSONSerializer.deserialize() Error: %v", err)
+//		return err
+//	}
+//	for k, v := range m {
+//		ss.Values[k] = v
+//	}
+//	return nil
+//}
+
+type serializerStruct struct {
+	D interface{}
 }
 
 // GobSerializer uses gob package to encode the session map
 type GobSerializer struct{}
 
 // Serialize using gob
-func (s GobSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
-	buf := new(bytes.Buffer)
-	enc := gob.NewEncoder(buf)
-	err := enc.Encode(ss.Values)
-	if err == nil {
-		return buf.Bytes(), nil
+func (s GobSerializer) Serialize(ss *sessions.Session) (map[string]string, error) {
+	data := make(map[string]string)
+	for k, v := range ss.Values {
+		kBuf := new(bytes.Buffer)
+		kEnc := gob.NewEncoder(kBuf)
+		if err := kEnc.Encode(serializerStruct{k}); err != nil {
+			return nil, err
+		}
+
+		vBuf := new(bytes.Buffer)
+		vEnc := gob.NewEncoder(vBuf)
+		if err := vEnc.Encode(serializerStruct{v}); err != nil {
+			return nil, err
+		}
+
+		data[string(kBuf.Bytes())] = string(vBuf.Bytes())
 	}
-	return nil, err
+
+	return data, nil
 }
 
 // Deserialize back to map[interface{}]interface{}
-func (s GobSerializer) Deserialize(d []byte, ss *sessions.Session) error {
-	dec := gob.NewDecoder(bytes.NewBuffer(d))
-	return dec.Decode(&ss.Values)
+func (s GobSerializer) Deserialize(d map[string]string, ss *sessions.Session) error {
+	for k, v := range d {
+		var key, value serializerStruct
+		kDec := gob.NewDecoder(bytes.NewBuffer([]byte(k)))
+		if err := kDec.Decode(&key); err != nil {
+			return err
+		}
+
+		vDec := gob.NewDecoder(bytes.NewBuffer([]byte(v)))
+		if err := vDec.Decode(&value); err != nil {
+			return err
+		}
+		ss.Values[key.D] = value.D
+	}
+	return nil
 }
 
 // RediStore stores sessions in a redis backend.
@@ -118,7 +144,8 @@ func (s *RediStore) SetSerializer(ss SessionSerializer) {
 // both in database and a browser. This is to change session storage configuration.
 // If you want just to remove session use your session `s` object and change it's
 // `Options.MaxAge` to -1, as specified in
-//    http://godoc.org/github.com/gorilla/sessions#Options
+//
+//	http://godoc.org/github.com/gorilla/sessions#Options
 //
 // Default is the one provided by this package value - `sessionExpire`.
 // Set it to 0 for no restriction.
@@ -308,13 +335,11 @@ func (s *RediStore) ping() (bool, error) {
 
 // save stores the session in redis.
 func (s *RediStore) save(session *sessions.Session) error {
-	b, err := s.serializer.Serialize(session)
+	data, err := s.serializer.Serialize(session)
 	if err != nil {
 		return err
 	}
-	if s.maxLength != 0 && len(b) > s.maxLength {
-		return errors.New("SessionStore: the value to store is too big")
-	}
+
 	conn := s.Pool.Get()
 	defer conn.Close()
 	if err = conn.Err(); err != nil {
@@ -324,7 +349,18 @@ func (s *RediStore) save(session *sessions.Session) error {
 	if age == 0 {
 		age = s.DefaultMaxAge
 	}
-	_, err = conn.Do("SETEX", s.keyPrefix+session.ID, age, b)
+
+	setList := make([]interface{}, 0)
+	setList = append(setList, s.keyPrefix+session.ID)
+	for k, v := range data {
+		if s.maxLength != 0 && len(v) > s.maxLength {
+			return errors.New("SessionStore: the value to store is too big")
+		}
+
+		setList = append(setList, k, v)
+	}
+	_, err = conn.Do("HMSET", setList...)
+	_, err = conn.Do("EXPIRE", s.keyPrefix+session.ID, age)
 	return err
 }
 
@@ -336,14 +372,14 @@ func (s *RediStore) load(session *sessions.Session) (bool, error) {
 	if err := conn.Err(); err != nil {
 		return false, err
 	}
-	data, err := conn.Do("GET", s.keyPrefix+session.ID)
+	data, err := conn.Do("HGETALL", s.keyPrefix+session.ID)
 	if err != nil {
 		return false, err
 	}
 	if data == nil {
 		return false, nil // no data was associated with this key
 	}
-	b, err := redis.Bytes(data, err)
+	b, err := redis.StringMap(data, err)
 	if err != nil {
 		return false, err
 	}
