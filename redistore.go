@@ -118,7 +118,8 @@ func (s *RediStore) SetSerializer(ss SessionSerializer) {
 // both in database and a browser. This is to change session storage configuration.
 // If you want just to remove session use your session `s` object and change it's
 // `Options.MaxAge` to -1, as specified in
-//    http://godoc.org/github.com/gorilla/sessions#Options
+//
+//	http://godoc.org/github.com/gorilla/sessions#Options
 //
 // Default is the one provided by this package value - `sessionExpire`.
 // Set it to 0 for no restriction.
@@ -165,6 +166,36 @@ func NewRediStore(size int, network, address, password string, keyPairs ...[]byt
 			return dial(network, address, password)
 		},
 	}, keyPairs...)
+}
+
+// NewRediStoreWithTLS returns a new RediStore with TLS connection.
+// size: maximum number of idle connections.
+func NewRediStoreWithTLS(size int, network, address, password string, keyPairs ...[]byte) (*RediStore, error) {
+	return NewRediStoreWithPool(&redis.Pool{
+		MaxIdle:     size,
+		IdleTimeout: 240 * time.Second,
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+		Dial: func() (redis.Conn, error) {
+			return dialTLS(network, address, password)
+		},
+	}, keyPairs...)
+}
+
+func dialTLS(network, address, password string) (redis.Conn, error) {
+	c, err := redis.Dial(network, address, redis.DialUseTLS(true))
+	if err != nil {
+		return nil, err
+	}
+	if password != "" {
+		if _, err := c.Do("AUTH", password); err != nil {
+			c.Close()
+			return nil, err
+		}
+	}
+	return c, err
 }
 
 func dialWithDB(network, address, password, DB string) (redis.Conn, error) {
