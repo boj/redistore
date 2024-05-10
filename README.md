@@ -11,7 +11,7 @@ Depends on the [Redigo](https://github.com/gomodule/redigo) Redis library.
 
 ## Installation
 
-    go get gopkg.in/boj/redistore.v1
+    go get github.com/jjcinaz/redistore
 
 ## Documentation
 
