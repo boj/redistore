@@ -1,4 +1,4 @@
-module github.com/boj/redistore
+module github.com/jjcinaz/redistore
 
 go 1.22.2
 
