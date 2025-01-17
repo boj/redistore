@@ -1,7 +1,9 @@
 # redistore
 
-[![GoDoc](https://pkg.go.dev/github.com/boj/redistore?status.svg)](https://pkg.go.dev/github.com/boj/redistore)
-[![Build Status](https://travis-ci.org/boj/redistore.svg?branch=master)](https://travis-ci.org/boj/redistore)
+[![codecov](https://codecov.io/gh/boj/redistore/branch/master/graph/badge.svg)](https://codecov.io/gh/boj/redistore)
+[![Go Report Card](https://goreportcard.com/badge/github.com/boj/redistore)](https://goreportcard.com/report/github.com/boj/redistore)
+[![GoDoc](https://godoc.org/github.com/boj/redistore?status.svg)](https://godoc.org/github.com/boj/redistore)
+[![Run Tests](https://github.com/boj/redistore/actions/workflows/go.yml/badge.svg)](https://github.com/boj/redistore/actions/workflows/go.yml)
 
 A session store backend for [gorilla/sessions](http://www.gorillatoolkit.org/pkg/sessions) - [src](https://github.com/gorilla/sessions).
 
@@ -11,11 +13,11 @@ Depends on the [Redigo](https://github.com/gomodule/redigo) Redis library.
 
 ## Installation
 
-    go get gopkg.in/boj/redistore.v1
+    go get github.com/boj/redistore
 
 ## Documentation
 
-Available on [godoc.org](http://www.godoc.org/gopkg.in/boj/redistore.v1).
+Available on [godoc.org](https://godoc.org/github.com/boj/redistore).
 
 See the [repository](http://www.gorillatoolkit.org/pkg/sessions) for full documentation on underlying interface.
 
