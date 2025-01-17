@@ -20,19 +20,34 @@ import (
 	"github.com/gorilla/sessions"
 )
 
-// Amount of time for cookies/redis keys to expire.
+// sessionExpire defines the duration (in seconds) for which a session will remain valid.
+// The current value represents 30 days (86400 seconds per day).
 var sessionExpire = 86400 * 30
 
-// SessionSerializer provides an interface hook for alternative serializers
+// SessionSerializer is an interface that defines methods for serializing
+// and deserializing session data. Implementations of this interface
+// should provide mechanisms to convert session data to and from byte slices.
 type SessionSerializer interface {
 	Deserialize(d []byte, ss *sessions.Session) error
 	Serialize(ss *sessions.Session) ([]byte, error)
 }
 
-// JSONSerializer encode the session map to JSON.
+// JSONSerializer is a struct that provides methods for serializing and
+// deserializing data to and from JSON format. It can be used to convert
+// Go data structures into JSON strings and vice versa.
 type JSONSerializer struct{}
 
-// Serialize to JSON. Will err if there are unmarshalable key values
+// Serialize converts the session's values into a JSON-encoded byte slice.
+// It returns an error if any of the session keys are not strings.
+//
+// Parameters:
+//
+//	ss - A pointer to the session to be serialized.
+//
+// Returns:
+//
+//	A byte slice containing the JSON-encoded session values, or an error if
+//	serialization fails.
 func (s JSONSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 	m := make(map[string]interface{}, len(ss.Values))
 	for k, v := range ss.Values {
