@@ -363,6 +363,43 @@ func TestPingBadPort(t *testing.T) {
 	}
 }
 
+func TestNewRediStoreWithURL(t *testing.T) {
+	t.Run("Valid URL", func(t *testing.T) {
+		store, err := NewRediStoreWithURL(10, "redis://localhost:6379", []byte("secret-key"))
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+		defer store.Close()
+
+		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
+		rsp := NewRecorder()
+		session, err := store.Get(req, "session-key")
+		if err != nil {
+			t.Fatalf("Error getting session: %v", err)
+		}
+		flashes := session.Flashes()
+		if len(flashes) != 0 {
+			t.Errorf("Expected empty flashes; Got %v", flashes)
+		}
+		session.AddFlash("foo")
+		if err = sessions.Save(req, rsp); err != nil {
+			t.Fatalf("Error saving session: %v", err)
+		}
+		hdr := rsp.Header()
+		cookies, ok := hdr["Set-Cookie"]
+		if !ok || len(cookies) != 1 {
+			t.Fatalf("No cookies. Header: %s", hdr)
+		}
+	})
+
+	t.Run("Invalid URL", func(t *testing.T) {
+		_, err := NewRediStoreWithURL(10, "invalid-url", []byte("secret-key"))
+		if err == nil {
+			t.Fatal("Expected error, got nil")
+		}
+	})
+}
+
 func ExampleRediStore() {
 	// RedisStore
 	store, err := NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))

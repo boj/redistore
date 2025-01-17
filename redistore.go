@@ -324,6 +324,33 @@ func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, err
 	return rs, err
 }
 
+// NewRediStoreWithURL creates a new RediStore with a Redis connection pool configured
+// using the provided URL. The pool has a maximum number of idle connections specified
+// by the size parameter, and an idle timeout of 240 seconds. The function also accepts
+// optional key pairs for secure cookie encoding.
+//
+// Parameters:
+//   - size: The maximum number of idle connections in the pool.
+//   - url: The Redis server URL.
+//   - keyPairs: Optional variadic parameter for secure cookie encoding.
+//
+// Returns:
+//   - *RediStore: A pointer to the newly created RediStore.
+//   - error: An error if the connection to the Redis server fails.
+func NewRediStoreWithURL(size int, url string, keyPairs ...[]byte) (*RediStore, error) {
+	return NewRediStoreWithPool(&redis.Pool{
+		MaxIdle:     size,
+		IdleTimeout: 240 * time.Second,
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+		Dial: func() (redis.Conn, error) {
+			return redis.DialURL(url)
+		},
+	}, keyPairs...)
+}
+
 // Close closes the underlying *redis.Pool
 func (s *RediStore) Close() error {
 	return s.Pool.Close()
