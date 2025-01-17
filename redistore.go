@@ -62,7 +62,16 @@ func (s JSONSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 	return json.Marshal(m)
 }
 
-// Deserialize back to map[string]interface{}
+// Deserialize takes a byte slice and a pointer to a sessions.Session,
+// and attempts to deserialize the byte slice into the session's Values map.
+// It returns an error if the deserialization process fails.
+//
+// Parameters:
+// - d: A byte slice containing the serialized session data.
+// - ss: A pointer to the sessions.Session where the deserialized data will be stored.
+//
+// Returns:
+// - An error if the deserialization process fails, otherwise nil.
 func (s JSONSerializer) Deserialize(d []byte, ss *sessions.Session) error {
 	m := make(map[string]interface{})
 	err := json.Unmarshal(d, &m)
@@ -76,10 +85,25 @@ func (s JSONSerializer) Deserialize(d []byte, ss *sessions.Session) error {
 	return nil
 }
 
-// GobSerializer uses gob package to encode the session map
+// GobSerializer is a struct that provides methods for serializing and
+// deserializing data using the Gob encoding format. Gob is a binary
+// serialization format that is efficient and compact, making it suitable
+// for encoding complex data structures in Go.
 type GobSerializer struct{}
 
-// Serialize using gob
+// Serialize encodes the session values using gob encoding and returns the
+// serialized byte slice. If the encoding process encounters an error, it
+// returns nil and the error.
+//
+// Parameters:
+//
+//	ss - A pointer to the session to be serialized.
+//
+// Returns:
+//
+//	A byte slice containing the serialized session values, or nil if an
+//	error occurred during encoding. The error encountered during encoding
+//	is also returned.
 func (s GobSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
@@ -90,13 +114,34 @@ func (s GobSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 	return nil, err
 }
 
-// Deserialize back to map[interface{}]interface{}
+// Deserialize decodes the given byte slice into the session's Values field.
+// It uses the gob package to perform the decoding.
+//
+// Parameters:
+//
+//	d - The byte slice to be deserialized.
+//	ss - The session object where the deserialized data will be stored.
+//
+// Returns:
+//
+//	An error if the deserialization fails, otherwise nil.
 func (s GobSerializer) Deserialize(d []byte, ss *sessions.Session) error {
 	dec := gob.NewDecoder(bytes.NewBuffer(d))
 	return dec.Decode(&ss.Values)
 }
 
-// RediStore stores sessions in a redis backend.
+// RediStore represents a session store backed by a Redis database.
+// It provides methods to manage session data using Redis as the storage backend.
+//
+// Fields:
+//
+//	Pool: A connection pool for Redis.
+//	Codecs: A list of securecookie.Codec used to encode and decode session data.
+//	Options: Default configuration options for sessions.
+//	DefaultMaxAge: Default TTL (Time To Live) for sessions with MaxAge == 0.
+//	maxLength: Maximum length of session data.
+//	keyPrefix: Prefix to be added to all Redis keys used by this store.
+//	serializer: Serializer used to encode and decode session data.
 type RediStore struct {
 	Pool          *redis.Pool
 	Codecs        []securecookie.Codec
@@ -119,12 +164,19 @@ func (s *RediStore) SetMaxLength(l int) {
 	}
 }
 
-// SetKeyPrefix set the prefix
+// SetKeyPrefix sets the key prefix for all keys used in the RediStore.
+// This is useful to avoid key name collisions when using a single Redis
+// instance for multiple applications.
 func (s *RediStore) SetKeyPrefix(p string) {
 	s.keyPrefix = p
 }
 
-// SetSerializer sets the serializer
+// SetSerializer sets the session serializer for the RediStore.
+// The serializer is responsible for encoding and decoding session data.
+//
+// Parameters:
+//
+//	ss - The session serializer to be used.
 func (s *RediStore) SetSerializer(ss SessionSerializer) {
 	s.serializer = ss
 }
@@ -153,6 +205,18 @@ func (s *RediStore) SetMaxAge(v int) {
 	}
 }
 
+// dial establishes a connection to a Redis server using the specified network and address.
+// If a password is provided, it authenticates the connection using the given password.
+// It returns the established Redis connection or an error if the connection or authentication fails.
+//
+// Parameters:
+//   - network: The network type (e.g., "tcp").
+//   - address: The address of the Redis server (e.g., "localhost:6379").
+//   - password: The password for authenticating with the Redis server.
+//
+// Returns:
+//   - redis.Conn: The established Redis connection.
+//   - error: An error if the connection or authentication fails.
 func dial(network, address, password string) (redis.Conn, error) {
 	c, err := redis.Dial(network, address)
 	if err != nil {
@@ -167,8 +231,12 @@ func dial(network, address, password string) (redis.Conn, error) {
 	return c, err
 }
 
-// NewRediStore returns a new RediStore.
-// size: maximum number of idle connections.
+// NewRediStore creates a new RediStore with a connection pool to a Redis server.
+// The size parameter specifies the maximum number of idle connections in the pool.
+// The network and address parameters specify the network type and address of the Redis server.
+// The password parameter is used for authentication with the Redis server.
+// The keyPairs parameter is a variadic argument that allows passing multiple key pairs for cookie encryption.
+// It returns a pointer to a RediStore and an error if the connection to the Redis server fails.
 func NewRediStore(size int, network, address, password string, keyPairs ...[]byte) (*RediStore, error) {
 	return NewRediStoreWithPool(&redis.Pool{
 		MaxIdle:     size,
@@ -195,8 +263,21 @@ func dialWithDB(network, address, password, DB string) (redis.Conn, error) {
 	return c, err
 }
 
-// NewRediStoreWithDB - like NewRedisStore but accepts `DB` parameter to select
-// redis DB instead of using the default one ("0")
+// NewRediStoreWithDB creates a new RediStore with a Redis connection pool.
+// The pool is configured with the given size, network, address, password, and database (DB).
+// The keyPairs are used for cookie encryption and decryption.
+//
+// Parameters:
+// - size: The maximum number of idle connections in the pool.
+// - network: The network type (e.g., "tcp").
+// - address: The address of the Redis server (e.g., "localhost:6379").
+// - password: The password for the Redis server.
+// - DB: The database to select after connecting to the Redis server.
+// - keyPairs: Variadic parameter for encryption and decryption keys.
+//
+// Returns:
+// - *RediStore: A pointer to the created RediStore.
+// - error: An error if the store could not be created.
 func NewRediStoreWithDB(size int, network, address, password, DB string, keyPairs ...[]byte) (*RediStore, error) {
 	return NewRediStoreWithPool(&redis.Pool{
 		MaxIdle:     size,
@@ -211,7 +292,20 @@ func NewRediStoreWithDB(size int, network, address, password, DB string, keyPair
 	}, keyPairs...)
 }
 
-// NewRediStoreWithPool instantiates a RediStore with a *redis.Pool passed in.
+// NewRediStoreWithPool creates a new RediStore instance using the provided
+// Redis connection pool and key pairs for secure cookie encoding.
+//
+// Parameters:
+//   - pool: A Redis connection pool.
+//   - keyPairs: Variadic parameter for secure cookie encoding key pairs.
+//
+// Returns:
+//   - *RediStore: A pointer to the newly created RediStore instance.
+//   - error: An error if the RediStore could not be created.
+//
+// The RediStore is configured with default options including a session path
+// of "/", a default maximum age of 20 minutes, a maximum length of 4096 bytes,
+// a key prefix of "session_", and a Gob serializer.
 func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, error) {
 	rs := &RediStore{
 		// http://godoc.org/github.com/gomodule/redigo/redis#Pool
