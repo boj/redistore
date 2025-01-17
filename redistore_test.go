@@ -192,7 +192,7 @@ func TestRediStore(t *testing.T) {
 			t.Fatalf("Error saving session: %v", err)
 		}
 		hdr := rsp.Header()
-		cookies, ok := hdr["Set-Cookie"]
+		cookies, ok = hdr["Set-Cookie"]
 		if !ok || len(cookies) != 1 {
 			t.Fatalf("No cookies. Header: %s", hdr)
 		}
@@ -279,7 +279,7 @@ func TestRediStore(t *testing.T) {
 			t.Fatalf("Error saving session: %v", err)
 		}
 		hdr := rsp.Header()
-		cookies, ok := hdr["Set-Cookie"]
+		cookies, ok = hdr["Set-Cookie"]
 		if !ok || len(cookies) != 1 {
 			t.Fatalf("No cookies. Header: %s", hdr)
 		}
@@ -322,7 +322,7 @@ func TestRediStore(t *testing.T) {
 			t.Fatalf("Error saving session: %v", err)
 		}
 		hdr := rsp.Header()
-		cookies, ok := hdr["Set-Cookie"]
+		cookies, ok = hdr["Set-Cookie"]
 		if !ok || len(cookies) != 1 {
 			t.Fatalf("No cookies. Header: %s", hdr)
 		}
