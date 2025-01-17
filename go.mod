@@ -1,6 +1,6 @@
 module github.com/boj/redistore
 
-go 1.23
+go 1.20
 
 require (
 	github.com/gomodule/redigo v1.9.2
