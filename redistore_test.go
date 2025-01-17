@@ -308,6 +308,9 @@ func TestRediStore(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		session, err = store.New(req, "my session")
+		if err != nil {
+			t.Fatal("failed to create session", err)
+		}
 		session.Values["big"] = make([]byte, base64.StdEncoding.DecodedLen(4096*2))
 		err = session.Save(req, w)
 		if err == nil {

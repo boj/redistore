@@ -118,7 +118,8 @@ func (s *RediStore) SetSerializer(ss SessionSerializer) {
 // both in database and a browser. This is to change session storage configuration.
 // If you want just to remove session use your session `s` object and change it's
 // `Options.MaxAge` to -1, as specified in
-//    http://godoc.org/github.com/gorilla/sessions#Options
+//
+//	http://godoc.org/github.com/gorilla/sessions#Options
 //
 // Default is the one provided by this package value - `sessionExpire`.
 // Set it to 0 for no restriction.
