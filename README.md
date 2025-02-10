@@ -38,7 +38,7 @@ import (
 
 func main() {
   // Fetch new store.
-  store, err := redistore.NewRediStore(10, "tcp", ":6379", "", []byte("secret-key"))
+  store, err := redistore.NewRediStore(10, "tcp", ":6379", "", "", []byte("secret-key"))
   if err != nil {
     panic(err)
   }
