@@ -209,7 +209,7 @@ func (s *RediStore) SetMaxAge(v int) {
 // NewRediStore creates a new RediStore with a connection pool to a Redis server.
 // The size parameter specifies the maximum number of idle connections in the pool.
 // The network and address parameters specify the network type and address of the Redis server.
-// The password parameter is used for authentication with the Redis server.
+// The username and password parameters are used for authentication with the Redis server.
 // The keyPairs parameter is a variadic argument that allows passing multiple key pairs for cookie encryption.
 // It returns a pointer to a RediStore and an error if the connection to the Redis server fails.
 func NewRediStore(size int, network, address, username, password string, keyPairs ...[]byte) (*RediStore, error) {
@@ -248,20 +248,21 @@ func dialClient(network, address, username, password, DB string) (redis.Conn, er
 }
 
 // NewRediStoreWithDB creates a new RediStore with a Redis connection pool.
-// The pool is configured with the given size, network, address, password, and database (DB).
-// The keyPairs are used for cookie encryption and decryption.
+// The pool is configured with the provided size, network, address, username, password, and database (DB).
+// The keyPairs are used for cookie encryption.
 //
 // Parameters:
-// - size: The maximum number of idle connections in the pool.
-// - network: The network type (e.g., "tcp").
-// - address: The address of the Redis server (e.g., "localhost:6379").
-// - password: The password for the Redis server.
-// - DB: The database to select after connecting to the Redis server.
-// - keyPairs: Variadic parameter for encryption and decryption keys.
+//   - size: The maximum number of idle connections in the pool.
+//   - network: The network type (e.g., "tcp").
+//   - address: The address of the Redis server.
+//   - username: The username for Redis authentication.
+//   - password: The password for Redis authentication.
+//   - DB: The Redis database to be selected after connecting.
+//   - keyPairs: Variadic parameter for cookie encryption keys.
 //
 // Returns:
-// - *RediStore: A pointer to the created RediStore.
-// - error: An error if the store could not be created.
+//   - *RediStore: A pointer to the newly created RediStore.
+//   - error: An error if the RediStore could not be created.
 func NewRediStoreWithDB(size int, network, address, username, password, DB string, keyPairs ...[]byte) (*RediStore, error) {
 	return NewRediStoreWithPool(&redis.Pool{
 		MaxIdle:     size,
