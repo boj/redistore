@@ -1,4 +1,4 @@
-module github.com/boj/redistore
+module github.com/IT-MY-GITHUB/redistore
 
 go 1.21
 
