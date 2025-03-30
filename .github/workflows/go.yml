@@ -31,7 +31,7 @@ jobs:
         include:
           - os: ubuntu-latest
             go-build: ~/.cache/go-build
-    name: ${{ matrix.os }} @ Go ${{ matrix.go }}
+    name: ${{ matrix.os }} @ Go ${{ matrix.go }} and Redis ${{ matrix.redis-version }}
     runs-on: ${{ matrix.os }}
     env:
       GO111MODULE: on
