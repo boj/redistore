@@ -19,30 +19,28 @@ jobs:
           go-version-file: "go.mod"
           check-latest: true
       - name: Setup golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
-          args: --verbose
+          version: v2.0
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        go: [1.21, 1.22, 1.23, 1.24]
+        os: [ubuntu-latest]
+        go: [1.23, 1.24]
+        redis-version: [6, 7]
         include:
           - os: ubuntu-latest
             go-build: ~/.cache/go-build
-          - os: macos-latest
-            go-build: ~/Library/Caches/go-build
-    name: ${{ matrix.os }} @ Go ${{ matrix.go }}
+    name: ${{ matrix.os }} @ Go ${{ matrix.go }} and Redis ${{ matrix.redis-version }}
     runs-on: ${{ matrix.os }}
     env:
       GO111MODULE: on
       GOPROXY: https://proxy.golang.org
     steps:
-      - name: Start Redis
+      - name: Start Redis ${{ matrix.redis-version }}
         uses: supercharge/redis-github-action@1.8.0
         with:
-          redis-version: 4
+          redis-version: ${{ matrix.redis-version }}
 
       - name: Set up Go ${{ matrix.go }}
         uses: actions/setup-go@v5

@@ -54,7 +54,7 @@ func (s JSONSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 	for k, v := range ss.Values {
 		ks, ok := k.(string)
 		if !ok {
-			err := fmt.Errorf("Non-string key value, cannot serialize session to JSON: %v", k)
+			err := fmt.Errorf("non-string key value, cannot serialize session to JSON: %v", k)
 			fmt.Printf("redistore.JSONSerializer.serialize() Error: %v", err)
 			return nil, err
 		}
@@ -371,7 +371,7 @@ func (s *RediStore) New(r *http.Request, name string) (*sessions.Session, error)
 		err = securecookie.DecodeMulti(name, c.Value, &session.ID, s.Codecs...)
 		if err == nil {
 			ok, err = s.load(session)
-			session.IsNew = !(err == nil && ok) // not new if no error and data available
+			session.IsNew = err != nil || !ok // not new if no error and data available
 		}
 	}
 	return session, err
@@ -408,7 +408,11 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 // Set session.Options.MaxAge = -1 and call Save instead. - July 18th, 2013
 func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
 	conn := s.Pool.Get()
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			fmt.Printf("Error closing connection: %v\n", err)
+		}
+	}()
 	if _, err := conn.Do("DEL", s.keyPrefix+session.ID); err != nil {
 		return err
 	}
@@ -426,7 +430,11 @@ func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sess
 // ping does an internal ping against a server to check if it is alive.
 func (s *RediStore) ping() (bool, error) {
 	conn := s.Pool.Get()
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			fmt.Printf("Error closing connection: %v\n", err)
+		}
+	}()
 	data, err := conn.Do("PING")
 	if err != nil || data == nil {
 		return false, err
@@ -444,7 +452,11 @@ func (s *RediStore) save(session *sessions.Session) error {
 		return errors.New("SessionStore: the value to store is too big")
 	}
 	conn := s.Pool.Get()
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			fmt.Printf("Error closing connection: %v\n", err)
+		}
+	}()
 	if err = conn.Err(); err != nil {
 		return err
 	}
@@ -460,7 +472,11 @@ func (s *RediStore) save(session *sessions.Session) error {
 // returns true if there is a sessoin data in DB
 func (s *RediStore) load(session *sessions.Session) (bool, error) {
 	conn := s.Pool.Get()
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			fmt.Printf("Error closing connection: %v\n", err)
+		}
+	}()
 	if err := conn.Err(); err != nil {
 		return false, err
 	}
@@ -481,7 +497,11 @@ func (s *RediStore) load(session *sessions.Session) (bool, error) {
 // delete removes keys from redis if MaxAge<0
 func (s *RediStore) delete(session *sessions.Session) error {
 	conn := s.Pool.Get()
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			fmt.Printf("Error closing connection: %v\n", err)
+		}
+	}()
 	if _, err := conn.Do("DEL", s.keyPrefix+session.ID); err != nil {
 		return err
 	}
