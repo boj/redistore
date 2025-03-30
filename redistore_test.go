@@ -102,7 +102,11 @@ func TestRediStore(t *testing.T) {
 		if err != nil {
 			t.Fatal(err.Error())
 		}
-		defer store.Close()
+		defer func() {
+			if err := store.Close(); err != nil {
+				fmt.Printf("Error closing store: %v\n", err)
+			}
+		}()
 
 		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
 		rsp := NewRecorder()
@@ -133,7 +137,11 @@ func TestRediStore(t *testing.T) {
 		if err != nil {
 			t.Fatal(err.Error())
 		}
-		defer store.Close()
+		defer func() {
+			if err := store.Close(); err != nil {
+				fmt.Printf("Error closing store: %v\n", err)
+			}
+		}()
 
 		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
 		req.Header.Add("Cookie", cookies[0])
@@ -175,7 +183,11 @@ func TestRediStore(t *testing.T) {
 		if err != nil {
 			t.Fatal(err.Error())
 		}
-		defer store.Close()
+		defer func() {
+			if err := store.Close(); err != nil {
+				fmt.Printf("Error closing store: %v\n", err)
+			}
+		}()
 
 		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
 		rsp := NewRecorder()
@@ -204,7 +216,11 @@ func TestRediStore(t *testing.T) {
 		if err != nil {
 			t.Fatal(err.Error())
 		}
-		defer store.Close()
+		defer func() {
+			if err := store.Close(); err != nil {
+				fmt.Printf("Error closing store: %v\n", err)
+			}
+		}()
 
 		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
 		req.Header.Add("Cookie", cookies[0])
@@ -262,7 +278,11 @@ func TestRediStore(t *testing.T) {
 		if err != nil {
 			t.Fatal(err.Error())
 		}
-		defer store.Close()
+		defer func() {
+			if err := store.Close(); err != nil {
+				fmt.Printf("Error closing store: %v\n", err)
+			}
+		}()
 
 		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
 		rsp := NewRecorder()
@@ -305,7 +325,11 @@ func TestRediStore(t *testing.T) {
 		if err != nil {
 			t.Fatal(err.Error())
 		}
-		defer store.Close()
+		defer func() {
+			if err := store.Close(); err != nil {
+				fmt.Printf("Error closing store: %v\n", err)
+			}
+		}()
 
 		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
 		rsp := NewRecorder()
@@ -344,7 +368,11 @@ func TestRediStore(t *testing.T) {
 
 func TestPingGoodPort(t *testing.T) {
 	store, _ := NewRediStore(10, "tcp", ":6379", "", "", []byte("secret-key"))
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			fmt.Printf("Error closing store: %v\n", err)
+		}
+	}()
 	ok, err := store.ping()
 	if err != nil {
 		t.Error(err.Error())
@@ -356,7 +384,11 @@ func TestPingGoodPort(t *testing.T) {
 
 func TestPingBadPort(t *testing.T) {
 	store, _ := NewRediStore(10, "tcp", ":6378", "", "", []byte("secret-key"))
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			fmt.Printf("Error closing store: %v\n", err)
+		}
+	}()
 	_, err := store.ping()
 	if err == nil {
 		t.Error("Expected error")
@@ -369,7 +401,11 @@ func TestNewRediStoreWithURL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
-		defer store.Close()
+		defer func() {
+			if err := store.Close(); err != nil {
+				fmt.Printf("Error closing store: %v\n", err)
+			}
+		}()
 
 		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
 		rsp := NewRecorder()
@@ -406,7 +442,11 @@ func ExampleRediStore() {
 	if err != nil {
 		panic(err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			fmt.Printf("Error closing store: %v\n", err)
+		}
+	}()
 }
 
 func init() {
