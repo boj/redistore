@@ -209,10 +209,12 @@ func (s *RediStore) SetMaxAge(v int) {
 // NewRediStore creates a new RediStore with a connection pool to a Redis server.
 // The size parameter specifies the maximum number of idle connections in the pool.
 // The network and address parameters specify the network type and address of the Redis server.
+// The enableTLS parameter will use a TLS connection to Redis if set to true.
+// The disableTLSVerification parameter will disable TLS verification if set to true.
 // The username and password parameters are used for authentication with the Redis server.
 // The keyPairs parameter is a variadic argument that allows passing multiple key pairs for cookie encryption.
 // It returns a pointer to a RediStore and an error if the connection to the Redis server fails.
-func NewRediStore(size int, network, address, username, password string, keyPairs ...[]byte) (*RediStore, error) {
+func NewRediStore(size int, network, address, username, password string, enableTLS, disableTLSVerification bool, keyPairs ...[]byte) (*RediStore, error) {
 	return NewRediStoreWithPool(&redis.Pool{
 		MaxIdle:     size,
 		IdleTimeout: 240 * time.Second,
@@ -221,12 +223,12 @@ func NewRediStore(size int, network, address, username, password string, keyPair
 			return err
 		},
 		Dial: func() (redis.Conn, error) {
-			return dialClient(network, address, username, password, "")
+			return dialClient(network, address, username, password, "", enableTLS, disableTLSVerification)
 		},
 	}, keyPairs...)
 }
 
-func dialClient(network, address, username, password, DB string) (redis.Conn, error) {
+func dialClient(network, address, username, password, DB string, enableTLS, disableTLSVerification bool) (redis.Conn, error) {
 	// check DB and convert to int
 	if DB == "" {
 		DB = "0"
@@ -244,6 +246,8 @@ func dialClient(network, address, username, password, DB string) (redis.Conn, er
 		redis.DialUsername(username),
 		redis.DialPassword(password),
 		redis.DialDatabase(db),
+		redis.DialUseTLS(enableTLS),
+		redis.DialTLSSkipVerify(disableTLSVerification),
 	)
 }
 
@@ -258,12 +262,14 @@ func dialClient(network, address, username, password, DB string) (redis.Conn, er
 //   - username: The username for Redis authentication.
 //   - password: The password for Redis authentication.
 //   - DB: The Redis database to be selected after connecting.
+//   - enableTLS: Use a TLS connection to Redis if set to true.
+//   - disableTLSVerification: disable TLS verification if set to true.
 //   - keyPairs: Variadic parameter for cookie encryption keys.
 //
 // Returns:
 //   - *RediStore: A pointer to the newly created RediStore.
 //   - error: An error if the RediStore could not be created.
-func NewRediStoreWithDB(size int, network, address, username, password, DB string, keyPairs ...[]byte) (*RediStore, error) {
+func NewRediStoreWithDB(size int, network, address, username, password, DB string, enableTLS, disableTLSVerification bool, keyPairs ...[]byte) (*RediStore, error) {
 	return NewRediStoreWithPool(&redis.Pool{
 		MaxIdle:     size,
 		IdleTimeout: 240 * time.Second,
@@ -272,7 +278,7 @@ func NewRediStoreWithDB(size int, network, address, username, password, DB strin
 			return err
 		},
 		Dial: func() (redis.Conn, error) {
-			return dialClient(network, address, username, password, DB)
+			return dialClient(network, address, username, password, DB, enableTLS, disableTLSVerification)
 		},
 	}, keyPairs...)
 }
