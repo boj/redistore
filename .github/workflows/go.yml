@@ -38,7 +38,7 @@ jobs:
       GOPROXY: https://proxy.golang.org
     steps:
       - name: Start Redis ${{ matrix.redis-version }}
-        uses: supercharge/redis-github-action@1.8.0
+        uses: supercharge/redis-github-action@1.8.1
         with:
           redis-version: ${{ matrix.redis-version }}
 
