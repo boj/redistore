@@ -249,7 +249,7 @@ func dialClient(network, address, username, password, db string) (redis.Conn, er
 			network,
 			address,
 			redis.DialUsername(username),
-			redis.DialDatabase(db),
+			redis.DialDatabase(dbNum),
 		)
 	}
 
