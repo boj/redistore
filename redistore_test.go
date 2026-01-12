@@ -2,6 +2,7 @@ package redistore
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/gob"
 	"fmt"
@@ -16,6 +17,9 @@ import (
 const (
 	defaultRedisHost = "127.0.0.1"
 	defaultRedisPort = "6379"
+	testFlashFoo     = "foo"
+	testFlashBar     = "bar"
+	testFlashBaz     = "baz"
 )
 
 func setup() string {
@@ -93,68 +97,96 @@ type FlashMessage struct {
 	Message string
 }
 
+func createTestStore(t *testing.T, addr string) *RediStore {
+	t.Helper()
+	store, err := NewRediStore(10, "tcp", addr, "", "", []byte("secret-key"))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	return store
+}
+
+func createTestStoreWithDB(t *testing.T, addr, db string) *RediStore {
+	t.Helper()
+	store, err := NewRediStoreWithDB(10, "tcp", addr, "", "", db, []byte("secret-key"))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	return store
+}
+
+func getSession(t *testing.T, store *RediStore, req *http.Request) *sessions.Session {
+	t.Helper()
+	session, err := store.Get(req, "session-key")
+	if err != nil {
+		t.Fatalf("Error getting session: %v", err)
+	}
+	return session
+}
+
+func saveSession(t *testing.T, req *http.Request, rsp http.ResponseWriter) {
+	t.Helper()
+	if err := sessions.Save(req, rsp); err != nil {
+		t.Fatalf("Error saving session: %v", err)
+	}
+}
+
+func getCookies(t *testing.T, rsp *ResponseRecorder) []string {
+	t.Helper()
+	hdr := rsp.Header()
+	cookies, ok := hdr["Set-Cookie"]
+	if !ok || len(cookies) != 1 {
+		t.Fatalf("No cookies. Header: %s", hdr)
+	}
+	return cookies
+}
+
 func TestRediStore(t *testing.T) {
+	gob.Register(FlashMessage{})
 	var cookies []string
-	var ok bool
 	t.Run("Round 1", func(t *testing.T) {
 		addr := setup()
-		store, err := NewRediStore(10, "tcp", addr, "", "", []byte("secret-key"))
-		if err != nil {
-			t.Fatal(err.Error())
-		}
+		store := createTestStore(t, addr)
 		defer func() {
 			if err := store.Close(); err != nil {
 				fmt.Printf("Error closing store: %v\n", err)
 			}
 		}()
 
-		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
+		req, _ := http.NewRequestWithContext(
+			context.Background(), "GET", "http://localhost:8080/", nil)
 		rsp := NewRecorder()
-		session, err := store.Get(req, "session-key")
-		if err != nil {
-			t.Fatalf("Error getting session: %v", err)
-		}
+		session := getSession(t, store, req)
 		flashes := session.Flashes()
 		if len(flashes) != 0 {
 			t.Errorf("Expected empty flashes; Got %v", flashes)
 		}
-		session.AddFlash("foo")
-		session.AddFlash("bar")
-		session.AddFlash("baz", "custom_key")
-		if err = sessions.Save(req, rsp); err != nil {
-			t.Fatalf("Error saving session: %v", err)
-		}
-		hdr := rsp.Header()
-		cookies, ok = hdr["Set-Cookie"]
-		if !ok || len(cookies) != 1 {
-			t.Fatalf("No cookies. Header: %s", hdr)
-		}
+		session.AddFlash(testFlashFoo)
+		session.AddFlash(testFlashBar)
+		session.AddFlash(testFlashBaz, "custom_key")
+		saveSession(t, req, rsp)
+		cookies = getCookies(t, rsp)
 	})
 
 	t.Run("Round 2", func(t *testing.T) {
 		addr := setup()
-		store, err := NewRediStore(10, "tcp", addr, "", "", []byte("secret-key"))
-		if err != nil {
-			t.Fatal(err.Error())
-		}
+		store := createTestStore(t, addr)
 		defer func() {
 			if err := store.Close(); err != nil {
 				fmt.Printf("Error closing store: %v\n", err)
 			}
 		}()
 
-		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
+		req, _ := http.NewRequestWithContext(
+			context.Background(), "GET", "http://localhost:8080/", nil)
 		req.Header.Add("Cookie", cookies[0])
 		rsp := NewRecorder()
-		session, err := store.Get(req, "session-key")
-		if err != nil {
-			t.Fatalf("Error getting session: %v", err)
-		}
+		session := getSession(t, store, req)
 		flashes := session.Flashes()
 		if len(flashes) != 2 {
 			t.Fatalf("Expected flashes; Got %v", flashes)
 		}
-		if flashes[0] != "foo" || flashes[1] != "bar" {
+		if flashes[0] != testFlashFoo || flashes[1] != testFlashBar {
 			t.Errorf("Expected foo,bar; Got %v", flashes)
 		}
 		flashes = session.Flashes()
@@ -164,7 +196,7 @@ func TestRediStore(t *testing.T) {
 		flashes = session.Flashes("custom_key")
 		if len(flashes) != 1 {
 			t.Errorf("Expected flashes; Got %v", flashes)
-		} else if flashes[0] != "baz" {
+		} else if flashes[0] != testFlashBaz {
 			t.Errorf("Expected baz; Got %v", flashes)
 		}
 		flashes = session.Flashes("custom_key")
@@ -172,84 +204,62 @@ func TestRediStore(t *testing.T) {
 			t.Errorf("Expected dumped flashes; Got %v", flashes)
 		}
 		session.Options.MaxAge = -1
-		if err = sessions.Save(req, rsp); err != nil {
-			t.Fatalf("Error saving session: %v", err)
-		}
+		saveSession(t, req, rsp)
 	})
 
 	t.Run("Round 3", func(t *testing.T) {
 		addr := setup()
-		store, err := NewRediStore(10, "tcp", addr, "", "", []byte("secret-key"))
-		if err != nil {
-			t.Fatal(err.Error())
-		}
+		store := createTestStore(t, addr)
 		defer func() {
 			if err := store.Close(); err != nil {
 				fmt.Printf("Error closing store: %v\n", err)
 			}
 		}()
 
-		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
+		req, _ := http.NewRequestWithContext(
+			context.Background(), "GET", "http://localhost:8080/", nil)
 		rsp := NewRecorder()
-		session, err := store.Get(req, "session-key")
-		if err != nil {
-			t.Fatalf("Error getting session: %v", err)
-		}
+		session := getSession(t, store, req)
 		flashes := session.Flashes()
 		if len(flashes) != 0 {
 			t.Errorf("Expected empty flashes; Got %v", flashes)
 		}
-		session.AddFlash(&FlashMessage{42, "foo"})
-		if err = sessions.Save(req, rsp); err != nil {
-			t.Fatalf("Error saving session: %v", err)
-		}
-		hdr := rsp.Header()
-		cookies, ok = hdr["Set-Cookie"]
-		if !ok || len(cookies) != 1 {
-			t.Fatalf("No cookies. Header: %s", hdr)
-		}
+		session.AddFlash(&FlashMessage{42, testFlashFoo})
+		saveSession(t, req, rsp)
+		cookies = getCookies(t, rsp)
 	})
 
 	t.Run("Round 4", func(t *testing.T) {
 		addr := setup()
-		store, err := NewRediStore(10, "tcp", addr, "", "", []byte("secret-key"))
-		if err != nil {
-			t.Fatal(err.Error())
-		}
+		store := createTestStore(t, addr)
 		defer func() {
 			if err := store.Close(); err != nil {
 				fmt.Printf("Error closing store: %v\n", err)
 			}
 		}()
 
-		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
+		req, _ := http.NewRequestWithContext(
+			context.Background(), "GET", "http://localhost:8080/", nil)
 		req.Header.Add("Cookie", cookies[0])
 		rsp := NewRecorder()
-		session, err := store.Get(req, "session-key")
-		if err != nil {
-			t.Fatalf("Error getting session: %v", err)
-		}
+		session := getSession(t, store, req)
 		flashes := session.Flashes()
 		if len(flashes) != 1 {
 			t.Fatalf("Expected flashes; Got %v", flashes)
 		}
 		custom := flashes[0].(FlashMessage)
-		if custom.Type != 42 || custom.Message != "foo" {
-			t.Errorf("Expected %#v, got %#v", FlashMessage{42, "foo"}, custom)
+		if custom.Type != 42 || custom.Message != testFlashFoo {
+			t.Errorf("Expected %#v, got %#v", FlashMessage{42, testFlashFoo}, custom)
 		}
 		session.Options.MaxAge = -1
-		if err = sessions.Save(req, rsp); err != nil {
-			t.Fatalf("Error saving session: %v", err)
-		}
+		saveSession(t, req, rsp)
 	})
 
 	t.Run("Round 6", func(t *testing.T) {
 		addr := setup()
-		store, err := NewRediStore(10, "tcp", addr, "", "", []byte("secret-key"))
-		if err != nil {
-			t.Fatal(err.Error())
-		}
-		req, err := http.NewRequest("GET", "http://www.example.com", nil)
+		store := createTestStore(t, addr)
+		req, err := http.NewRequestWithContext(
+			context.Background(), "GET", "http://www.example.com", nil)
 		if err != nil {
 			t.Fatal("failed to create request", err)
 		}
@@ -274,93 +284,65 @@ func TestRediStore(t *testing.T) {
 
 	t.Run("Round 7", func(t *testing.T) {
 		addr := setup()
-		store, err := NewRediStoreWithDB(10, "tcp", addr, "", "", "1", []byte("secret-key"))
-		if err != nil {
-			t.Fatal(err.Error())
-		}
+		store := createTestStoreWithDB(t, addr, "1")
 		defer func() {
 			if err := store.Close(); err != nil {
 				fmt.Printf("Error closing store: %v\n", err)
 			}
 		}()
 
-		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
+		req, _ := http.NewRequestWithContext(
+			context.Background(), "GET", "http://localhost:8080/", nil)
 		rsp := NewRecorder()
-		session, err := store.Get(req, "session-key")
-		if err != nil {
-			t.Fatalf("Error getting session: %v", err)
-		}
+		session := getSession(t, store, req)
 		flashes := session.Flashes()
 		if len(flashes) != 0 {
 			t.Errorf("Expected empty flashes; Got %v", flashes)
 		}
-		session.AddFlash("foo")
-		if err = sessions.Save(req, rsp); err != nil {
-			t.Fatalf("Error saving session: %v", err)
-		}
-		hdr := rsp.Header()
-		cookies, ok = hdr["Set-Cookie"]
-		if !ok || len(cookies) != 1 {
-			t.Fatalf("No cookies. Header: %s", hdr)
-		}
+		session.AddFlash(testFlashFoo)
+		saveSession(t, req, rsp)
+		cookies = getCookies(t, rsp)
 
 		req.Header.Add("Cookie", cookies[0])
-		session, err = store.Get(req, "session-key")
-		if err != nil {
-			t.Fatalf("Error getting session: %v", err)
-		}
+		session = getSession(t, store, req)
 		flashes = session.Flashes()
 		if len(flashes) != 1 {
 			t.Fatalf("Expected flashes; Got %v", flashes)
 		}
-		if flashes[0] != "foo" {
+		if flashes[0] != testFlashFoo {
 			t.Errorf("Expected foo,bar; Got %v", flashes)
 		}
 	})
 
 	t.Run("Round 8", func(t *testing.T) {
 		addr := setup()
-		store, err := NewRediStore(10, "tcp", addr, "", "", []byte("secret-key"))
+		store := createTestStore(t, addr)
 		store.SetSerializer(JSONSerializer{})
-		if err != nil {
-			t.Fatal(err.Error())
-		}
 		defer func() {
 			if err := store.Close(); err != nil {
 				fmt.Printf("Error closing store: %v\n", err)
 			}
 		}()
 
-		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
+		req, _ := http.NewRequestWithContext(
+			context.Background(), "GET", "http://localhost:8080/", nil)
 		rsp := NewRecorder()
-		session, err := store.Get(req, "session-key")
-		if err != nil {
-			t.Fatalf("Error getting session: %v", err)
-		}
+		session := getSession(t, store, req)
 		flashes := session.Flashes()
 		if len(flashes) != 0 {
 			t.Errorf("Expected empty flashes; Got %v", flashes)
 		}
-		session.AddFlash("foo")
-		if err = sessions.Save(req, rsp); err != nil {
-			t.Fatalf("Error saving session: %v", err)
-		}
-		hdr := rsp.Header()
-		cookies, ok = hdr["Set-Cookie"]
-		if !ok || len(cookies) != 1 {
-			t.Fatalf("No cookies. Header: %s", hdr)
-		}
+		session.AddFlash(testFlashFoo)
+		saveSession(t, req, rsp)
+		cookies = getCookies(t, rsp)
 
 		req.Header.Add("Cookie", cookies[0])
-		session, err = store.Get(req, "session-key")
-		if err != nil {
-			t.Fatalf("Error getting session: %v", err)
-		}
+		session = getSession(t, store, req)
 		flashes = session.Flashes()
 		if len(flashes) != 1 {
 			t.Fatalf("Expected flashes; Got %v", flashes)
 		}
-		if flashes[0] != "foo" {
+		if flashes[0] != testFlashFoo {
 			t.Errorf("Expected foo,bar; Got %v", flashes)
 		}
 	})
@@ -407,25 +389,17 @@ func TestNewRediStoreWithURL(t *testing.T) {
 			}
 		}()
 
-		req, _ := http.NewRequest("GET", "http://localhost:8080/", nil)
+		req, _ := http.NewRequestWithContext(
+			context.Background(), "GET", "http://localhost:8080/", nil)
 		rsp := NewRecorder()
-		session, err := store.Get(req, "session-key")
-		if err != nil {
-			t.Fatalf("Error getting session: %v", err)
-		}
+		session := getSession(t, store, req)
 		flashes := session.Flashes()
 		if len(flashes) != 0 {
 			t.Errorf("Expected empty flashes; Got %v", flashes)
 		}
-		session.AddFlash("foo")
-		if err = sessions.Save(req, rsp); err != nil {
-			t.Fatalf("Error saving session: %v", err)
-		}
-		hdr := rsp.Header()
-		cookies, ok := hdr["Set-Cookie"]
-		if !ok || len(cookies) != 1 {
-			t.Fatalf("No cookies. Header: %s", hdr)
-		}
+		session.AddFlash(testFlashFoo)
+		saveSession(t, req, rsp)
+		_ = getCookies(t, rsp)
 	})
 
 	t.Run("Invalid URL", func(t *testing.T) {
@@ -447,8 +421,4 @@ func ExampleRediStore() {
 			fmt.Printf("Error closing store: %v\n", err)
 		}
 	}()
-}
-
-func init() {
-	gob.Register(FlashMessage{})
 }

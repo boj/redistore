@@ -212,7 +212,11 @@ func (s *RediStore) SetMaxAge(v int) {
 // The username and password parameters are used for authentication with the Redis server.
 // The keyPairs parameter is a variadic argument that allows passing multiple key pairs for cookie encryption.
 // It returns a pointer to a RediStore and an error if the connection to the Redis server fails.
-func NewRediStore(size int, network, address, username, password string, keyPairs ...[]byte) (*RediStore, error) {
+func NewRediStore(
+	size int,
+	network, address, username, password string,
+	keyPairs ...[]byte,
+) (*RediStore, error) {
 	return NewRediStoreWithPool(&redis.Pool{
 		MaxIdle:     size,
 		IdleTimeout: 240 * time.Second,
@@ -226,14 +230,14 @@ func NewRediStore(size int, network, address, username, password string, keyPair
 	}, keyPairs...)
 }
 
-func dialClient(network, address, username, password, DB string) (redis.Conn, error) {
-	// check DB and convert to int
-	if DB == "" {
-		DB = "0"
+func dialClient(network, address, username, password, db string) (redis.Conn, error) {
+	// check db and convert to int
+	if db == "" {
+		db = "0"
 	}
 
-	// convert DB to int
-	db, err := strconv.Atoi(DB)
+	// convert db to int
+	dbNum, err := strconv.Atoi(db)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +247,7 @@ func dialClient(network, address, username, password, DB string) (redis.Conn, er
 		address,
 		redis.DialUsername(username),
 		redis.DialPassword(password),
-		redis.DialDatabase(db),
+		redis.DialDatabase(dbNum),
 	)
 }
 
@@ -263,7 +267,11 @@ func dialClient(network, address, username, password, DB string) (redis.Conn, er
 // Returns:
 //   - *RediStore: A pointer to the newly created RediStore.
 //   - error: An error if the RediStore could not be created.
-func NewRediStoreWithDB(size int, network, address, username, password, DB string, keyPairs ...[]byte) (*RediStore, error) {
+func NewRediStoreWithDB(
+	size int,
+	network, address, username, password, db string,
+	keyPairs ...[]byte,
+) (*RediStore, error) {
 	return NewRediStoreWithPool(&redis.Pool{
 		MaxIdle:     size,
 		IdleTimeout: 240 * time.Second,
@@ -272,7 +280,7 @@ func NewRediStoreWithDB(size int, network, address, username, password, DB strin
 			return err
 		},
 		Dial: func() (redis.Conn, error) {
-			return dialClient(network, address, username, password, DB)
+			return dialClient(network, address, username, password, db)
 		},
 	}, keyPairs...)
 }
@@ -400,7 +408,11 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 //
 // WARNING: This method should be considered deprecated since it is not exposed via the gorilla/sessions interface.
 // Set session.Options.MaxAge = -1 and call Save instead. - July 18th, 2013
-func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+func (s *RediStore) Delete(
+	r *http.Request,
+	w http.ResponseWriter,
+	session *sessions.Session,
+) error {
 	conn := s.Pool.Get()
 	defer func() {
 		if err := conn.Close(); err != nil {
