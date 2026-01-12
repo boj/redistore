@@ -21,7 +21,8 @@ jobs:
       - name: Setup golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.0
+          version: v2.7
+          args: --verbose
   test:
     strategy:
       matrix:
