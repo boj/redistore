@@ -241,6 +241,17 @@ func dialClient(network, address, username, password, db string) (redis.Conn, er
 	if err != nil {
 		return nil, err
 	}
+	
+	// If there is no password, the redis. DialPassword
+	if password == "" {
+		// Only the database index is passed.
+		return redis.Dial(
+			network,
+			address,
+			redis.DialUsername(username),
+			redis.DialDatabase(db),
+		)
+	}
 
 	return redis.Dial(
 		network,
