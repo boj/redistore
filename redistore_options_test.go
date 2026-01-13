@@ -7,7 +7,8 @@ import (
 	"github.com/gomodule/redigo/redis"
 )
 
-// TestNewStore_NoConnectionOption tests that NewStore returns error when no connection option is provided
+// TestNewStore_NoConnectionOption tests that NewStore returns error
+// when no connection option is provided
 func TestNewStore_NoConnectionOption(t *testing.T) {
 	_, err := NewStore(
 		[]byte("secret-key"),
@@ -16,12 +17,15 @@ func TestNewStore_NoConnectionOption(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error when no connection option provided")
 	}
-	if err.Error() != "invalid configuration: exactly one connection option is required: use WithPool, WithAddress, or WithURL" {
+	expectedErr := "invalid configuration: exactly one connection option is required: " +
+		"use WithPool, WithAddress, or WithURL"
+	if err.Error() != expectedErr {
 		t.Errorf("Unexpected error message: %v", err)
 	}
 }
 
-// TestNewStore_MultipleConnectionOptions tests that NewStore returns error when multiple connection options are provided
+// TestNewStore_MultipleConnectionOptions tests that NewStore returns error
+// when multiple connection options are provided
 func TestNewStore_MultipleConnectionOptions(t *testing.T) {
 	_, err := NewStore(
 		[]byte("secret-key"),
@@ -31,7 +35,9 @@ func TestNewStore_MultipleConnectionOptions(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error when multiple connection options provided")
 	}
-	if err.Error() != "invalid configuration: only one connection option can be specified: WithPool, WithAddress, or WithURL are mutually exclusive" {
+	expectedErr := "invalid configuration: only one connection option can be specified: " +
+		"WithPool, WithAddress, or WithURL are mutually exclusive"
+	if err.Error() != expectedErr {
 		t.Errorf("Unexpected error message: %v", err)
 	}
 }

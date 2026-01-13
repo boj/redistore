@@ -430,10 +430,15 @@ func (cfg *storeConfig) validate() error {
 	}
 
 	if connectionOptions == 0 {
-		return errors.New("exactly one connection option is required: use WithPool, WithAddress, or WithURL")
+		return errors.New(
+			"exactly one connection option is required: use WithPool, WithAddress, or WithURL",
+		)
 	}
 	if connectionOptions > 1 {
-		return errors.New("only one connection option can be specified: WithPool, WithAddress, or WithURL are mutually exclusive")
+		return errors.New(
+			"only one connection option can be specified: " +
+				"WithPool, WithAddress, or WithURL are mutually exclusive",
+		)
 	}
 
 	return nil
@@ -450,7 +455,8 @@ func (cfg *storeConfig) buildPool() (*redis.Pool, error) {
 	// Create dial function based on address or URL
 	var dialFunc func() (redis.Conn, error)
 
-	if cfg.address != nil {
+	switch {
+	case cfg.address != nil:
 		// Use address-based connection
 		dialFunc = func() (redis.Conn, error) {
 			return dialClient(
@@ -461,12 +467,12 @@ func (cfg *storeConfig) buildPool() (*redis.Pool, error) {
 				cfg.db,
 			)
 		}
-	} else if cfg.url != "" {
+	case cfg.url != "":
 		// Use URL-based connection
 		dialFunc = func() (redis.Conn, error) {
 			return redis.DialURL(cfg.url)
 		}
-	} else {
+	default:
 		return nil, errors.New("no connection method specified")
 	}
 
@@ -487,9 +493,10 @@ func (cfg *storeConfig) buildPool() (*redis.Pool, error) {
 // NewStore creates a new RediStore with the given options.
 //
 // Parameters:
-//   keyPairs - One or more key pairs for cookie encryption and authentication.
-//              The first key is used for encryption, subsequent keys for rotation.
-//   opts - Configuration options. At least one connection option is required.
+//
+//	keyPairs - One or more key pairs for cookie encryption and authentication.
+//	           The first key is used for encryption, subsequent keys for rotation.
+//	opts - Configuration options. At least one connection option is required.
 //
 // Connection Options (required, exactly one):
 //   - WithPool(pool) - Use a custom Redis connection pool
