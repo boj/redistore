@@ -4,6 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/boj/redistore)](https://goreportcard.com/report/github.com/boj/redistore)
 [![GoDoc](https://godoc.org/github.com/boj/redistore?status.svg)](https://godoc.org/github.com/boj/redistore)
 [![Run Tests](https://github.com/boj/redistore/actions/workflows/go.yml/badge.svg)](https://github.com/boj/redistore/actions/workflows/go.yml)
+[![Trivy Security Scan](https://github.com/appleboy/redistore/actions/workflows/security.yml/badge.svg)](https://github.com/appleboy/redistore/actions/workflows/security.yml)
 
 A session store backend for [gorilla/sessions](http://www.gorillatoolkit.org/pkg/sessions) - [src](https://github.com/gorilla/sessions).
 
