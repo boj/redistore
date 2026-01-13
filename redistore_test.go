@@ -99,7 +99,11 @@ type FlashMessage struct {
 
 func createTestStore(t *testing.T, addr string) *RediStore {
 	t.Helper()
-	store, err := NewRediStore(10, "tcp", addr, "", "", []byte("secret-key"))
+	store, err := NewStore(
+		[]byte("secret-key"),
+		WithAddress("tcp", addr),
+		WithPoolSize(10),
+	)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -108,7 +112,12 @@ func createTestStore(t *testing.T, addr string) *RediStore {
 
 func createTestStoreWithDB(t *testing.T, addr, db string) *RediStore {
 	t.Helper()
-	store, err := NewRediStoreWithDB(10, "tcp", addr, "", "", db, []byte("secret-key"))
+	store, err := NewStore(
+		[]byte("secret-key"),
+		WithAddress("tcp", addr),
+		WithDB(db),
+		WithPoolSize(10),
+	)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -349,7 +358,14 @@ func TestRediStore(t *testing.T) {
 }
 
 func TestPingGoodPort(t *testing.T) {
-	store, _ := NewRediStore(10, "tcp", ":6379", "", "", []byte("secret-key"))
+	store, err := NewStore(
+		[]byte("secret-key"),
+		WithAddress("tcp", ":6379"),
+		WithPoolSize(10),
+	)
+	if err != nil {
+		t.Skip("Skipping test: Redis not available:", err)
+	}
 	defer func() {
 		if err := store.Close(); err != nil {
 			fmt.Printf("Error closing store: %v\n", err)
@@ -365,21 +381,32 @@ func TestPingGoodPort(t *testing.T) {
 }
 
 func TestPingBadPort(t *testing.T) {
-	store, _ := NewRediStore(10, "tcp", ":6378", "", "", []byte("secret-key"))
-	defer func() {
-		if err := store.Close(); err != nil {
-			fmt.Printf("Error closing store: %v\n", err)
-		}
-	}()
-	_, err := store.ping()
+	store, err := NewStore(
+		[]byte("secret-key"),
+		WithAddress("tcp", ":6378"),
+		WithPoolSize(10),
+	)
+	// This should fail because the port is wrong
 	if err == nil {
-		t.Error("Expected error")
+		defer func() {
+			if err := store.Close(); err != nil {
+				fmt.Printf("Error closing store: %v\n", err)
+			}
+		}()
+		_, pingErr := store.ping()
+		if pingErr == nil {
+			t.Error("Expected error connecting to bad port")
+		}
 	}
 }
 
-func TestNewRediStoreWithURL(t *testing.T) {
+func TestNewStore_WithURL(t *testing.T) {
 	t.Run("Valid URL", func(t *testing.T) {
-		store, err := NewRediStoreWithURL(10, "redis://localhost:6379", []byte("secret-key"))
+		store, err := NewStore(
+			[]byte("secret-key"),
+			WithURL("redis://localhost:6379"),
+			WithPoolSize(10),
+		)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -403,7 +430,11 @@ func TestNewRediStoreWithURL(t *testing.T) {
 	})
 
 	t.Run("Invalid URL", func(t *testing.T) {
-		_, err := NewRediStoreWithURL(10, "invalid-url", []byte("secret-key"))
+		_, err := NewStore(
+			[]byte("secret-key"),
+			WithURL("invalid-url"),
+			WithPoolSize(10),
+		)
 		if err == nil {
 			t.Fatal("Expected error, got nil")
 		}
@@ -412,7 +443,11 @@ func TestNewRediStoreWithURL(t *testing.T) {
 
 func ExampleRediStore() {
 	// RedisStore
-	store, err := NewRediStore(10, "tcp", ":6379", "", "", []byte("secret-key"))
+	store, err := NewStore(
+		[]byte("secret-key"),
+		WithAddress("tcp", ":6379"),
+		WithPoolSize(10),
+	)
 	if err != nil {
 		panic(err)
 	}
