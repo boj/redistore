@@ -367,7 +367,12 @@ func WithSessionOptions(opts *sessions.Options) Option {
 		if opts == nil {
 			return errors.New("session options cannot be nil")
 		}
-		cfg.sessionOpts = opts
+		// Copy user-provided options into an internal instance to avoid
+		// aliasing and unintended mutations when other options are applied.
+		if cfg.sessionOpts == nil {
+			cfg.sessionOpts = &sessions.Options{}
+		}
+		*cfg.sessionOpts = *opts
 		return nil
 	}
 }
