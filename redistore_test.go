@@ -441,6 +441,133 @@ func TestNewStore_WithURL(t *testing.T) {
 	})
 }
 
+// TestSessionCookieMaxAgeZero tests that MaxAge == 0 creates a session cookie
+// (no Max-Age attribute) and saves to Redis with DefaultMaxAge TTL.
+// This is a regression test for issue #53.
+func TestSessionCookieMaxAgeZero(t *testing.T) {
+	addr := setup()
+	store := createTestStore(t, addr)
+	defer func() {
+		if err := store.Close(); err != nil {
+			fmt.Printf("Error closing store: %v\n", err)
+		}
+	}()
+
+	var cookies []string
+
+	// Round 1: Create a session with MaxAge = 0 (session cookie)
+	t.Run("Create session cookie with MaxAge=0", func(t *testing.T) {
+		req, _ := http.NewRequestWithContext(
+			context.Background(), "GET", "http://localhost:8080/", nil)
+		rsp := NewRecorder()
+		session := getSession(t, store, req)
+
+		// Set MaxAge to 0 to create a session cookie
+		session.Options.MaxAge = 0
+		session.Values["user"] = "testuser"
+		session.Values["authenticated"] = true
+
+		saveSession(t, req, rsp)
+		cookies = getCookies(t, rsp)
+
+		// Verify cookie is set
+		if len(cookies) == 0 {
+			t.Fatal("Expected cookie to be set")
+		}
+
+		// Verify the cookie doesn't contain an explicit Max-Age=0
+		// (session cookies should not have Max-Age attribute set to 0)
+		cookieStr := cookies[0]
+		if bytes.Contains([]byte(cookieStr), []byte("Max-Age=0")) {
+			t.Errorf("Session cookie should not have Max-Age=0, got: %s", cookieStr)
+		}
+
+		// Verify session was saved to Redis by checking if we can retrieve it
+		conn := store.Pool.Get()
+		defer conn.Close()
+
+		// Get the session ID from the session
+		if session.ID == "" {
+			t.Fatal("Session ID should not be empty after save")
+		}
+
+		// Check if the key exists in Redis
+		exists, err := conn.Do("EXISTS", store.keyPrefix+session.ID)
+		if err != nil {
+			t.Fatalf("Error checking Redis key existence: %v", err)
+		}
+		if exists == int64(0) {
+			t.Error("Session should be saved to Redis when MaxAge=0")
+		}
+
+		// Verify the TTL is set to DefaultMaxAge (not 0)
+		ttl, err := conn.Do("TTL", store.keyPrefix+session.ID)
+		if err != nil {
+			t.Fatalf("Error getting TTL from Redis: %v", err)
+		}
+		ttlInt := ttl.(int64)
+		if ttlInt <= 0 {
+			t.Errorf("Expected positive TTL (DefaultMaxAge), got %d", ttlInt)
+		}
+		// TTL should be close to DefaultMaxAge (1200 seconds / 20 minutes)
+		// Allow some margin for test execution time
+		if ttlInt < 1190 || ttlInt > 1200 {
+			t.Errorf("Expected TTL close to DefaultMaxAge (1200), got %d", ttlInt)
+		}
+	})
+
+	// Round 2: Verify the session can be retrieved
+	t.Run("Retrieve session cookie", func(t *testing.T) {
+		req, _ := http.NewRequestWithContext(
+			context.Background(), "GET", "http://localhost:8080/", nil)
+		req.Header.Add("Cookie", cookies[0])
+		session := getSession(t, store, req)
+
+		// Verify session is not new (it was loaded from Redis)
+		if session.IsNew {
+			t.Error("Session should not be new, it should be loaded from Redis")
+		}
+
+		// Verify session values are preserved
+		user, ok := session.Values["user"]
+		if !ok || user != "testuser" {
+			t.Errorf("Expected user='testuser', got %v", user)
+		}
+
+		authenticated, ok := session.Values["authenticated"]
+		if !ok || authenticated != true {
+			t.Errorf("Expected authenticated=true, got %v", authenticated)
+		}
+	})
+
+	// Round 3: Verify MaxAge < 0 deletes the session (existing behavior)
+	t.Run("Delete session with MaxAge=-1", func(t *testing.T) {
+		req, _ := http.NewRequestWithContext(
+			context.Background(), "GET", "http://localhost:8080/", nil)
+		req.Header.Add("Cookie", cookies[0])
+		rsp := NewRecorder()
+		session := getSession(t, store, req)
+
+		sessionID := session.ID
+
+		// Set MaxAge to -1 to delete the session
+		session.Options.MaxAge = -1
+		saveSession(t, req, rsp)
+
+		// Verify session was deleted from Redis
+		conn := store.Pool.Get()
+		defer conn.Close()
+
+		exists, err := conn.Do("EXISTS", store.keyPrefix+sessionID)
+		if err != nil {
+			t.Fatalf("Error checking Redis key existence: %v", err)
+		}
+		if exists != int64(0) {
+			t.Error("Session should be deleted from Redis when MaxAge=-1")
+		}
+	})
+}
+
 func ExampleRediStore() {
 	// RedisStore
 	store, err := NewStore(
