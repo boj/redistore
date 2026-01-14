@@ -28,7 +28,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         go: [1.23, 1.24, 1.25]
-        redis-version: [6, 7]
+        redis-version: [6, 7, 8]
         include:
           - os: ubuntu-latest
             go-build: ~/.cache/go-build
