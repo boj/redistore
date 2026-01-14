@@ -490,12 +490,61 @@ func (cfg *storeConfig) buildPool() (*redis.Pool, error) {
 	return pool, nil
 }
 
+// Keys creates a key pairs slice from individual byte slices.
+// This is a convenience function to simplify the creation of key pairs
+// without having to write [][]byte{...}.
+//
+// Example:
+//
+//	store, err := NewStore(
+//	    Keys([]byte("auth-key"), []byte("encrypt-key")),
+//	    WithAddress("tcp", ":6379"),
+//	)
+func Keys(keys ...[]byte) [][]byte {
+	return keys
+}
+
+// KeysFromStrings creates a key pairs slice from strings.
+// This is the most convenient way to provide keys for development and testing.
+//
+// Warning: For production use with sensitive keys, consider using Keys() with
+// byte slices loaded from secure storage instead of hardcoded strings.
+//
+// Example:
+//
+//	// Single key
+//	store, err := NewStore(
+//	    KeysFromStrings("secret-key"),
+//	    WithAddress("tcp", ":6379"),
+//	)
+//
+//	// Multiple keys for rotation
+//	store, err := NewStore(
+//	    KeysFromStrings(
+//	        "new-auth-key",
+//	        "new-encrypt-key",
+//	        "old-auth-key",
+//	        "old-encrypt-key",
+//	    ),
+//	    WithAddress("tcp", ":6379"),
+//	)
+func KeysFromStrings(keys ...string) [][]byte {
+	result := make([][]byte, len(keys))
+	for i, k := range keys {
+		result[i] = []byte(k)
+	}
+	return result
+}
+
 // NewStore creates a new RediStore with the given options.
 //
 // Parameters:
 //
 //	keyPairs - One or more key pairs for cookie encryption and authentication.
-//	           The first key is used for encryption, subsequent keys for rotation.
+//	           Each key should be 16, 24, or 32 bytes for AES-128, AES-192, or AES-256.
+//	           Keys are used in pairs: authentication key and encryption key.
+//	           Provide multiple pairs for key rotation (first pair is used for encoding,
+//	           remaining pairs are used for decoding only).
 //	opts - Configuration options. At least one connection option is required.
 //
 // Connection Options (required, exactly one):
@@ -524,15 +573,36 @@ func (cfg *storeConfig) buildPool() (*redis.Pool, error) {
 //
 // Example:
 //
-//	// Basic usage
+//	// Basic usage with single key (using helper function)
 //	store, err := NewStore(
-//	    []byte("secret-key"),
+//	    KeysFromStrings("secret-key"),
 //	    WithAddress("tcp", ":6379"),
+//	)
+//
+//	// Using Keys() with byte slices
+//	store, err := NewStore(
+//	    Keys(
+//	        []byte("authentication-key"), // 32 or 64 bytes
+//	        []byte("encryption-key"),     // 16, 24, or 32 bytes
+//	    ),
+//	    WithAddress("tcp", ":6379"),
+//	)
+//
+//	// With key rotation (old keys for decoding only)
+//	store, err := NewStore(
+//	    KeysFromStrings(
+//	        "new-auth-key",
+//	        "new-encrypt-key",
+//	        "old-auth-key",    // For decoding existing sessions
+//	        "old-encrypt-key",
+//	    ),
+//	    WithAddress("tcp", "localhost:6379"),
+//	    WithDB("1"),
 //	)
 //
 //	// With multiple options
 //	store, err := NewStore(
-//	    []byte("secret-key"),
+//	    KeysFromStrings("secret-key"),
 //	    WithAddress("tcp", "localhost:6379"),
 //	    WithDB("1"),
 //	    WithMaxLength(8192),
@@ -542,10 +612,16 @@ func (cfg *storeConfig) buildPool() (*redis.Pool, error) {
 //
 //	// Using URL
 //	store, err := NewStore(
-//	    []byte("secret-key"),
+//	    KeysFromStrings("secret-key"),
 //	    WithURL("redis://:password@localhost:6379/0"),
 //	)
-func NewStore(keyPairs []byte, opts ...Option) (*RediStore, error) {
+//
+//	// Without helper functions (direct slice)
+//	store, err := NewStore(
+//	    [][]byte{[]byte("secret-key")},
+//	    WithAddress("tcp", ":6379"),
+//	)
+func NewStore(keyPairs [][]byte, opts ...Option) (*RediStore, error) {
 	// Validate key pairs
 	if len(keyPairs) == 0 {
 		return nil, errors.New("at least one key pair is required")
@@ -575,7 +651,7 @@ func NewStore(keyPairs []byte, opts ...Option) (*RediStore, error) {
 	// Create RediStore instance
 	rs := &RediStore{
 		Pool:          pool,
-		Codecs:        securecookie.CodecsFromPairs(keyPairs),
+		Codecs:        securecookie.CodecsFromPairs(keyPairs...),
 		Options:       cfg.sessionOpts,
 		DefaultMaxAge: cfg.defaultMaxAge,
 		maxLength:     cfg.maxLength,

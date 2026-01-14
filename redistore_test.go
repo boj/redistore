@@ -100,7 +100,7 @@ type FlashMessage struct {
 func createTestStore(t *testing.T, addr string) *RediStore {
 	t.Helper()
 	store, err := NewStore(
-		[]byte("secret-key"),
+		[][]byte{[]byte("secret-key")},
 		WithAddress("tcp", addr),
 		WithPoolSize(10),
 	)
@@ -113,7 +113,7 @@ func createTestStore(t *testing.T, addr string) *RediStore {
 func createTestStoreWithDB(t *testing.T, addr, db string) *RediStore {
 	t.Helper()
 	store, err := NewStore(
-		[]byte("secret-key"),
+		[][]byte{[]byte("secret-key")},
 		WithAddress("tcp", addr),
 		WithDB(db),
 		WithPoolSize(10),
@@ -359,7 +359,7 @@ func TestRediStore(t *testing.T) {
 
 func TestPingGoodPort(t *testing.T) {
 	store, err := NewStore(
-		[]byte("secret-key"),
+		[][]byte{[]byte("secret-key")},
 		WithAddress("tcp", ":6379"),
 		WithPoolSize(10),
 	)
@@ -382,7 +382,7 @@ func TestPingGoodPort(t *testing.T) {
 
 func TestPingBadPort(t *testing.T) {
 	store, err := NewStore(
-		[]byte("secret-key"),
+		[][]byte{[]byte("secret-key")},
 		WithAddress("tcp", ":6378"),
 		WithPoolSize(10),
 	)
@@ -403,7 +403,7 @@ func TestPingBadPort(t *testing.T) {
 func TestNewStore_WithURL(t *testing.T) {
 	t.Run("Valid URL", func(t *testing.T) {
 		store, err := NewStore(
-			[]byte("secret-key"),
+			[][]byte{[]byte("secret-key")},
 			WithURL("redis://localhost:6379"),
 			WithPoolSize(10),
 		)
@@ -431,7 +431,7 @@ func TestNewStore_WithURL(t *testing.T) {
 
 	t.Run("Invalid URL", func(t *testing.T) {
 		_, err := NewStore(
-			[]byte("secret-key"),
+			[][]byte{[]byte("secret-key")},
 			WithURL("invalid-url"),
 			WithPoolSize(10),
 		)
@@ -444,7 +444,7 @@ func TestNewStore_WithURL(t *testing.T) {
 func ExampleRediStore() {
 	// RedisStore
 	store, err := NewStore(
-		[]byte("secret-key"),
+		[][]byte{[]byte("secret-key")},
 		WithAddress("tcp", ":6379"),
 		WithPoolSize(10),
 	)

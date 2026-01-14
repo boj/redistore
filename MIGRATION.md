@@ -22,10 +22,57 @@ Version 2.0.0 is a **breaking change** that removes the old initialization funct
 
 | v1 API | v2 API |
 |--------|--------|
-| `NewRediStore(10, "tcp", ":6379", "", "", key)` | `NewStore(key, WithAddress("tcp", ":6379"))` |
-| `NewRediStoreWithDB(10, "tcp", ":6379", "", "", "1", key)` | `NewStore(key, WithAddress("tcp", ":6379"), WithDB("1"))` |
-| `NewRediStoreWithURL(10, url, key)` | `NewStore(key, WithURL(url))` |
-| `NewRediStoreWithPool(pool, key)` | `NewStore(key, WithPool(pool))` |
+| `NewRediStore(10, "tcp", ":6379", "", "", []byte("key"))` | `NewStore([][]byte{[]byte("key")}, WithAddress("tcp", ":6379"))` |
+| `NewRediStoreWithDB(10, "tcp", ":6379", "", "", "1", []byte("key"))` | `NewStore([][]byte{[]byte("key")}, WithAddress("tcp", ":6379"), WithDB("1"))` |
+| `NewRediStoreWithURL(10, url, []byte("key"))` | `NewStore([][]byte{[]byte("key")}, WithURL(url))` |
+| `NewRediStoreWithPool(pool, []byte("key"))` | `NewStore([][]byte{[]byte("key")}, WithPool(pool))` |
+
+## Key Changes
+
+### Key Pairs Parameter
+
+**v1:** Used variadic `...[]byte` parameter
+```go
+// Single key
+NewRediStore(10, "tcp", ":6379", "", "", []byte("secret-key"))
+
+// Multiple keys for rotation
+NewRediStore(10, "tcp", ":6379", "", "",
+    []byte("auth-key"), []byte("encrypt-key"),
+    []byte("old-auth-key"), []byte("old-encrypt-key"))
+```
+
+**v2:** Uses `[][]byte` slice with helper functions
+```go
+// Recommended: Using KeysFromStrings (simplest)
+NewStore(KeysFromStrings("secret-key"), WithAddress("tcp", ":6379"))
+
+// Multiple keys for rotation
+NewStore(
+    KeysFromStrings(
+        "auth-key", "encrypt-key",
+        "old-auth-key", "old-encrypt-key",
+    ),
+    WithAddress("tcp", ":6379"),
+)
+
+// Alternative: Using Keys() with byte slices
+NewStore(Keys([]byte("secret-key")), WithAddress("tcp", ":6379"))
+
+// Direct slice syntax (still supported)
+NewStore([][]byte{[]byte("secret-key")}, WithAddress("tcp", ":6379"))
+```
+
+This change provides better type safety and clearer intent when passing multiple keys.
+
+### Helper Functions
+
+v2 introduces two convenience functions to simplify key pair creation:
+
+- **`KeysFromStrings(keys ...string)`** - Most convenient for development/testing
+- **`Keys(keys ...[]byte)`** - When you already have byte slices
+
+These helpers eliminate the need to write `[][]byte{[]byte(...)}` every time.
 
 ## Step-by-Step Migration
 
@@ -64,7 +111,7 @@ store, err := redistore.NewRediStore(
 **v2:**
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", ":6379"),
     // WithPoolSize is optional (defaults to 10)
 )
@@ -87,14 +134,14 @@ store, err := redistore.NewRediStore(
 **v2:**
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", ":6379"),
     redistore.WithAuth("myuser", "mypass"),
 )
 
 // Or just password:
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", ":6379"),
     redistore.WithPassword("mypass"),
 )
@@ -118,14 +165,14 @@ store, err := redistore.NewRediStoreWithDB(
 **v2:**
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", ":6379"),
     redistore.WithDB("5"),
 )
 
 // Or using integer:
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", ":6379"),
     redistore.WithDBNum(5),
 )
@@ -145,7 +192,7 @@ store, err := redistore.NewRediStoreWithURL(
 **v2:**
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    [][]byte{[]byte("secret-key")},
     redistore.WithURL("redis://:password@localhost:6379/0"),
 )
 ```
@@ -174,7 +221,7 @@ pool := &redis.Pool{
     },
 }
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    [][]byte{[]byte("secret-key")},
     redistore.WithPool(pool),
 )
 ```
@@ -182,7 +229,7 @@ store, err := redistore.NewStore(
 **v2 - Option B (Configure pool parameters):**
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", ":6379"),
     redistore.WithPoolSize(100),
     redistore.WithIdleTimeout(5 * time.Minute),
@@ -202,7 +249,7 @@ store.SetSerializer(redistore.JSONSerializer{})
 **v2 (All at once):**
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", ":6379"),
     redistore.WithMaxLength(8192),
     redistore.WithKeyPrefix("myapp_"),
@@ -329,7 +376,7 @@ store, err := redistore.NewStore(
 **Fix:**
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"), // ✅ Provide key
+    [][]byte{[]byte("secret-key")}, // ✅ Provide key
     redistore.WithAddress("tcp", ":6379"),
 )
 ```
@@ -339,7 +386,7 @@ store, err := redistore.NewStore(
 **Error:**
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    [][]byte{[]byte("secret-key")},
     redistore.WithMaxLength(8192), // ❌ No connection option
 )
 // Error: "exactly one connection option is required"
@@ -348,7 +395,7 @@ store, err := redistore.NewStore(
 **Fix:**
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", ":6379"), // ✅ Add connection option
     redistore.WithMaxLength(8192),
 )
@@ -359,7 +406,7 @@ store, err := redistore.NewStore(
 **Error:**
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", ":6379"),    // ❌
     redistore.WithURL("redis://localhost"), // ❌ Multiple connections
 )
@@ -370,7 +417,7 @@ store, err := redistore.NewStore(
 ```go
 // Choose ONE connection method
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", ":6379"), // ✅ Only one
 )
 ```

@@ -22,16 +22,51 @@ This is a major version update with breaking API changes. Please see [MIGRATION.
 
 #### New API
 
-- **`NewStore(keyPairs, opts...)`** - New unified initialization function using Option Pattern
+- **`NewStore(keyPairs [][]byte, opts...)`** - New unified initialization function using Option Pattern
 
   ```go
+  // Single key
   store, err := NewStore(
-      []byte("secret-key"),
+      [][]byte{[]byte("secret-key")},
       WithAddress("tcp", ":6379"),
       WithDB("1"),
       WithMaxLength(8192),
   )
+
+  // Multiple keys for key rotation
+  store, err := NewStore(
+      [][]byte{
+          []byte("new-auth-key"),
+          []byte("new-encrypt-key"),
+          []byte("old-auth-key"),    // For decoding existing sessions
+          []byte("old-encrypt-key"),
+      },
+      WithAddress("tcp", ":6379"),
+  )
   ```
+
+#### Key Rotation Support
+
+- **Key pairs parameter changed from `[]byte` to `[][]byte`** - Enables proper support for encryption key rotation
+- Keys are provided as byte slice pairs (authentication key, encryption key)
+- First key pair is used for encoding new sessions
+- All key pairs are tried for decoding, allowing seamless key rotation without invalidating existing sessions
+
+#### Helper Functions
+
+- **`Keys(keys ...[]byte)`** - Convenience function to create key pairs from byte slices
+
+  ```go
+  store, err := NewStore(Keys([]byte("key")), WithAddress("tcp", ":6379"))
+  ```
+
+- **`KeysFromStrings(keys ...string)`** - Most convenient way to create key pairs from strings
+
+  ```go
+  store, err := NewStore(KeysFromStrings("secret-key"), WithAddress("tcp", ":6379"))
+  ```
+
+These helpers simplify the creation of key pairs, eliminating the need to write `[][]byte{[]byte(...)}` every time.
 
 #### Connection Options
 

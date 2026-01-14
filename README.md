@@ -58,7 +58,7 @@ import (
 func main() {
     // Create a new store with options
     store, err := redistore.NewStore(
-        []byte("secret-key"),
+        redistore.KeysFromStrings("secret-key"),
         redistore.WithAddress("tcp", ":6379"),
     )
     if err != nil {
@@ -100,7 +100,7 @@ func main() {
 
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", "localhost:6379"),
 )
 ```
@@ -109,7 +109,7 @@ store, err := redistore.NewStore(
 
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", "localhost:6379"),
     redistore.WithAuth("username", "password"),
 )
@@ -119,7 +119,7 @@ store, err := redistore.NewStore(
 
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", "localhost:6379"),
     redistore.WithDB("5"), // Use database 5
 )
@@ -129,7 +129,7 @@ store, err := redistore.NewStore(
 
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithURL("redis://:password@localhost:6379/0"),
 )
 ```
@@ -138,7 +138,7 @@ store, err := redistore.NewStore(
 
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithAddress("tcp", "localhost:6379"),
     redistore.WithMaxLength(8192),          // Max session size: 8KB
     redistore.WithKeyPrefix("myapp_"),      // Key prefix
@@ -161,10 +161,54 @@ pool := &redis.Pool{
 }
 
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    redistore.KeysFromStrings("secret-key"),
     redistore.WithPool(pool),
 )
 ```
+
+### Key Rotation
+
+Support for encryption key rotation allows you to change keys without invalidating existing sessions:
+
+```go
+// Keys are provided in pairs: authentication key, encryption key
+// The first pair is used for encoding new sessions
+// All pairs are tried for decoding existing sessions
+store, err := redistore.NewStore(
+    redistore.KeysFromStrings(
+        "new-authentication-key", // 32 or 64 bytes recommended
+        "new-encryption-key",     // 16, 24, or 32 bytes for AES
+        "old-authentication-key", // Keep for existing sessions
+        "old-encryption-key",     // Keep for existing sessions
+    ),
+    redistore.WithAddress("tcp", "localhost:6379"),
+)
+
+// Using Keys() with byte slices for production
+authKey, _ := loadKeyFromSecureStorage("auth-key")
+encryptKey, _ := loadKeyFromSecureStorage("encrypt-key")
+store, err := redistore.NewStore(
+    redistore.Keys(authKey, encryptKey),
+    redistore.WithAddress("tcp", "localhost:6379"),
+)
+```
+
+**Key Sizes:**
+
+- Authentication key: 32 or 64 bytes (HMAC)
+- Encryption key: 16 (AES-128), 24 (AES-192), or 32 bytes (AES-256)
+
+**Rotation Process:**
+
+1. Add new key pair at the beginning
+2. Keep old keys for a transition period
+3. Remove old keys once all sessions have been renewed
+
+**Helper Functions:**
+
+- `KeysFromStrings(keys ...string)` - Simplest way to provide keys from strings
+- `Keys(keys ...[]byte)` - For keys already as byte slices
+- Direct slice: `[][]byte{[]byte("key")}` - Original syntax still supported
 
 ### Complete Example
 
@@ -182,7 +226,7 @@ import (
 func main() {
     // Initialize store with custom configuration
     store, err := redistore.NewStore(
-        []byte("secret-key-123"),
+        redistore.KeysFromStrings("secret-key-123"),
         redistore.WithAddress("tcp", "localhost:6379"),
         redistore.WithDB("1"),
         redistore.WithMaxLength(8192),
@@ -270,7 +314,7 @@ Uses Go's `encoding/gob` package. Efficient binary format, suitable for complex 
 
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    [][]byte{[]byte("secret-key")},
     redistore.WithAddress("tcp", ":6379"),
     // GobSerializer is the default, no need to specify
 )
@@ -282,7 +326,7 @@ Uses `encoding/json` package. Human-readable, cross-language compatible.
 
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    [][]byte{[]byte("secret-key")},
     redistore.WithAddress("tcp", ":6379"),
     redistore.WithSerializer(redistore.JSONSerializer{}),
 )
@@ -310,7 +354,7 @@ func (s MySerializer) Deserialize(d []byte, ss *sessions.Session) error {
 
 // Use it
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    [][]byte{[]byte("secret-key")},
     redistore.WithAddress("tcp", ":6379"),
     redistore.WithSerializer(MySerializer{}),
 )
@@ -366,7 +410,7 @@ While the Option Pattern is recommended, you can still modify settings after cre
 
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    [][]byte{[]byte("secret-key")},
     redistore.WithAddress("tcp", ":6379"),
 )
 
@@ -383,7 +427,7 @@ store.SetMaxAge(86400 * 7) // 7 days
 
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    [][]byte{[]byte("secret-key")},
     redistore.WithAddress("tcp", ":6379"),
     redistore.WithURL("redis://localhost"), // ❌ Error: multiple connection options
 )
@@ -397,7 +441,7 @@ if err != nil {
 
 ```go
 store, err := redistore.NewStore(
-    []byte("secret-key"),
+    [][]byte{[]byte("secret-key")},
     redistore.WithAddress("tcp", "invalid:9999"),
 )
 if err != nil {

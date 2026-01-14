@@ -11,7 +11,7 @@ import (
 // when no connection option is provided
 func TestNewStore_NoConnectionOption(t *testing.T) {
 	_, err := NewStore(
-		[]byte("secret-key"),
+		[][]byte{[]byte("secret-key")},
 		WithMaxLength(8192),
 	)
 	if err == nil {
@@ -28,7 +28,7 @@ func TestNewStore_NoConnectionOption(t *testing.T) {
 // when multiple connection options are provided
 func TestNewStore_MultipleConnectionOptions(t *testing.T) {
 	_, err := NewStore(
-		[]byte("secret-key"),
+		[][]byte{[]byte("secret-key")},
 		WithAddress("tcp", ":6379"),
 		WithURL("redis://localhost:6379"),
 	)
@@ -45,7 +45,7 @@ func TestNewStore_MultipleConnectionOptions(t *testing.T) {
 // TestNewStore_NoKeyPairs tests that NewStore returns error when no key pairs are provided
 func TestNewStore_NoKeyPairs(t *testing.T) {
 	_, err := NewStore(
-		[]byte{}, // empty key pairs
+		[][]byte{}, // empty key pairs
 		WithAddress("tcp", ":6379"),
 	)
 	if err == nil {
@@ -331,5 +331,131 @@ func TestWithSerializer_Configuration(t *testing.T) {
 
 	if _, ok := cfg.serializer.(JSONSerializer); !ok {
 		t.Error("Expected JSONSerializer, got different type")
+	}
+}
+
+// TestNewStore_KeyRotation tests key rotation with multiple key pairs
+func TestNewStore_KeyRotation(t *testing.T) {
+	// Test with multiple key pairs for rotation
+	_, err := NewStore(
+		[][]byte{
+			[]byte("new-authentication-key-32-bytes!"),
+			[]byte("new-encrypt-key-32-bytes-long!"),
+			[]byte("old-authentication-key-32-bytes!"),
+			[]byte("old-encrypt-key-32-bytes-long!"),
+		},
+		WithAddress("tcp", ":6379"),
+	)
+
+	// Error expected if Redis is not running, but the signature should work
+	if err != nil && err.Error() != "failed to connect to Redis: dial tcp :6379: connect: connection refused" &&
+		err.Error() != "failed to connect to Redis: dial tcp [::1]:6379: connect: connection refused" {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+}
+
+// TestNewStore_SingleKey tests single key configuration
+func TestNewStore_SingleKey(t *testing.T) {
+	// Test with a single key
+	_, err := NewStore(
+		[][]byte{[]byte("single-secret-key")},
+		WithAddress("tcp", ":6379"),
+	)
+
+	// Error expected if Redis is not running, but the signature should work
+	if err != nil && err.Error() != "failed to connect to Redis: dial tcp :6379: connect: connection refused" &&
+		err.Error() != "failed to connect to Redis: dial tcp [::1]:6379: connect: connection refused" {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+}
+
+// TestKeys tests the Keys helper function
+func TestKeys(t *testing.T) {
+	// Test Keys with single key
+	keys := Keys([]byte("secret-key"))
+	if len(keys) != 1 {
+		t.Errorf("Expected 1 key, got %d", len(keys))
+	}
+	if string(keys[0]) != "secret-key" {
+		t.Errorf("Expected 'secret-key', got '%s'", string(keys[0]))
+	}
+
+	// Test Keys with multiple keys
+	keys = Keys(
+		[]byte("auth-key"),
+		[]byte("encrypt-key"),
+		[]byte("old-auth-key"),
+		[]byte("old-encrypt-key"),
+	)
+	if len(keys) != 4 {
+		t.Errorf("Expected 4 keys, got %d", len(keys))
+	}
+
+	// Use Keys with NewStore
+	_, err := NewStore(
+		Keys([]byte("test-key")),
+		WithAddress("tcp", ":6379"),
+	)
+	// Error expected if Redis is not running
+	if err != nil && err.Error() != "failed to connect to Redis: dial tcp :6379: connect: connection refused" &&
+		err.Error() != "failed to connect to Redis: dial tcp [::1]:6379: connect: connection refused" {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+}
+
+// TestKeysFromStrings tests the KeysFromStrings helper function
+func TestKeysFromStrings(t *testing.T) {
+	// Test KeysFromStrings with single key
+	keys := KeysFromStrings("secret-key")
+	if len(keys) != 1 {
+		t.Errorf("Expected 1 key, got %d", len(keys))
+	}
+	if string(keys[0]) != "secret-key" {
+		t.Errorf("Expected 'secret-key', got '%s'", string(keys[0]))
+	}
+
+	// Test KeysFromStrings with multiple keys
+	keys = KeysFromStrings(
+		"new-auth-key",
+		"new-encrypt-key",
+		"old-auth-key",
+		"old-encrypt-key",
+	)
+	if len(keys) != 4 {
+		t.Errorf("Expected 4 keys, got %d", len(keys))
+	}
+	if string(keys[0]) != "new-auth-key" {
+		t.Errorf("Expected 'new-auth-key', got '%s'", string(keys[0]))
+	}
+
+	// Use KeysFromStrings with NewStore
+	_, err := NewStore(
+		KeysFromStrings("test-key"),
+		WithAddress("tcp", ":6379"),
+	)
+	// Error expected if Redis is not running
+	if err != nil && err.Error() != "failed to connect to Redis: dial tcp :6379: connect: connection refused" &&
+		err.Error() != "failed to connect to Redis: dial tcp [::1]:6379: connect: connection refused" {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+}
+
+// TestKeysFromStrings_EmptyKeys tests KeysFromStrings with empty input
+func TestKeysFromStrings_EmptyKeys(t *testing.T) {
+	keys := KeysFromStrings()
+	if len(keys) != 0 {
+		t.Errorf("Expected 0 keys, got %d", len(keys))
+	}
+
+	// Should fail validation in NewStore
+	_, err := NewStore(
+		KeysFromStrings(),
+		WithAddress("tcp", ":6379"),
+	)
+	if err == nil {
+		t.Fatal("Expected error for empty keys")
+	}
+	if err.Error() != "at least one key pair is required" {
+		t.Errorf("Unexpected error message: %v", err)
 	}
 }
