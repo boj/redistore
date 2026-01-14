@@ -10,12 +10,12 @@ A session store backend for [gorilla/sessions](http://www.gorillatoolkit.org/pkg
 
 ## Features
 
-✨ **Clean API** - Single entry point with flexible option pattern
-🔧 **Highly Configurable** - 15+ options for fine-grained control
-🔒 **Secure** - Built on gorilla/sessions with secure cookie encoding
-⚡ **Fast** - Redis-backed for high performance
-📦 **Serialization** - Support for Gob and JSON serializers
-🧪 **Well Tested** - Comprehensive test coverage
+- ✨ **Clean API** - Single entry point with flexible option pattern
+- 🔧 **Highly Configurable** - 15+ options for fine-grained control
+- 🔒 **Secure** - Built on gorilla/sessions with secure cookie encoding
+- ⚡ **Fast** - Redis-backed for high performance
+- 📦 **Serialization** - Support for Gob and JSON serializers
+- 🧪 **Well Tested** - Comprehensive test coverage
 
 ## Requirements
 
