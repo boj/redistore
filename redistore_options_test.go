@@ -7,6 +7,12 @@ import (
 	"github.com/gomodule/redigo/redis"
 )
 
+const (
+	// Error messages for Redis connection failures in tests
+	errRedisRefused     = "failed to connect to Redis: dial tcp :6379: connect: connection refused"
+	errRedisRefusedIPv6 = "failed to connect to Redis: dial tcp [::1]:6379: connect: connection refused"
+)
+
 // TestNewStore_NoConnectionOption tests that NewStore returns error
 // when no connection option is provided
 func TestNewStore_NoConnectionOption(t *testing.T) {
@@ -348,8 +354,7 @@ func TestNewStore_KeyRotation(t *testing.T) {
 	)
 
 	// Error expected if Redis is not running, but the signature should work
-	if err != nil && err.Error() != "failed to connect to Redis: dial tcp :6379: connect: connection refused" &&
-		err.Error() != "failed to connect to Redis: dial tcp [::1]:6379: connect: connection refused" {
+	if err != nil && err.Error() != errRedisRefused && err.Error() != errRedisRefusedIPv6 {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 }
@@ -363,8 +368,7 @@ func TestNewStore_SingleKey(t *testing.T) {
 	)
 
 	// Error expected if Redis is not running, but the signature should work
-	if err != nil && err.Error() != "failed to connect to Redis: dial tcp :6379: connect: connection refused" &&
-		err.Error() != "failed to connect to Redis: dial tcp [::1]:6379: connect: connection refused" {
+	if err != nil && err.Error() != errRedisRefused && err.Error() != errRedisRefusedIPv6 {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 }
@@ -397,8 +401,7 @@ func TestKeys(t *testing.T) {
 		WithAddress("tcp", ":6379"),
 	)
 	// Error expected if Redis is not running
-	if err != nil && err.Error() != "failed to connect to Redis: dial tcp :6379: connect: connection refused" &&
-		err.Error() != "failed to connect to Redis: dial tcp [::1]:6379: connect: connection refused" {
+	if err != nil && err.Error() != errRedisRefused && err.Error() != errRedisRefusedIPv6 {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 }
@@ -434,8 +437,7 @@ func TestKeysFromStrings(t *testing.T) {
 		WithAddress("tcp", ":6379"),
 	)
 	// Error expected if Redis is not running
-	if err != nil && err.Error() != "failed to connect to Redis: dial tcp :6379: connect: connection refused" &&
-		err.Error() != "failed to connect to Redis: dial tcp [::1]:6379: connect: connection refused" {
+	if err != nil && err.Error() != errRedisRefused && err.Error() != errRedisRefusedIPv6 {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 }
