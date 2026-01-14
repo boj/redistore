@@ -131,6 +131,40 @@ func (s GobSerializer) Deserialize(d []byte, ss *sessions.Session) error {
 	return dec.Decode(&ss.Values)
 }
 
+// Option is a function type for configuring a RediStore.
+type Option func(*storeConfig) error
+
+// addressConfig holds network and address configuration for Redis connection.
+type addressConfig struct {
+	network string
+	address string
+}
+
+// storeConfig is an internal configuration structure used during RediStore initialization.
+// It collects all configuration parameters before creating the final RediStore instance.
+type storeConfig struct {
+	// Connection configuration (exactly one must be set)
+	pool    *redis.Pool
+	address *addressConfig
+	url     string
+
+	// Authentication
+	username string
+	password string
+
+	// Redis configuration
+	db          string
+	poolSize    int
+	idleTimeout time.Duration
+
+	// Store configuration
+	maxLength     int
+	keyPrefix     string
+	defaultMaxAge int
+	serializer    SessionSerializer
+	sessionOpts   *sessions.Options
+}
+
 // RediStore represents a session store backed by a Redis database.
 // It provides methods to manage session data using Redis as the storage backend.
 //
@@ -151,6 +185,491 @@ type RediStore struct {
 	maxLength     int
 	keyPrefix     string
 	serializer    SessionSerializer
+}
+
+// WithPool configures the RediStore to use a custom Redis connection pool.
+// This option is mutually exclusive with WithAddress and WithURL.
+func WithPool(pool *redis.Pool) Option {
+	return func(cfg *storeConfig) error {
+		if pool == nil {
+			return errors.New("pool cannot be nil")
+		}
+		cfg.pool = pool
+		return nil
+	}
+}
+
+// WithAddress configures the RediStore to connect to Redis using network and address.
+// This option is mutually exclusive with WithPool and WithURL.
+//
+// Example:
+//
+//	WithAddress("tcp", "localhost:6379")
+//	WithAddress("unix", "/tmp/redis.sock")
+func WithAddress(network, address string) Option {
+	return func(cfg *storeConfig) error {
+		if network == "" || address == "" {
+			return errors.New("network and address cannot be empty")
+		}
+		cfg.address = &addressConfig{
+			network: network,
+			address: address,
+		}
+		return nil
+	}
+}
+
+// WithURL configures the RediStore to connect to Redis using a URL.
+// This option is mutually exclusive with WithPool and WithAddress.
+//
+// Example:
+//
+//	WithURL("redis://localhost:6379/0")
+//	WithURL("redis://:password@localhost:6379/1")
+func WithURL(url string) Option {
+	return func(cfg *storeConfig) error {
+		if url == "" {
+			return errors.New("url cannot be empty")
+		}
+		cfg.url = url
+		return nil
+	}
+}
+
+// WithAuth sets the username and password for Redis authentication.
+// Both username and password can be empty strings if not required.
+func WithAuth(username, password string) Option {
+	return func(cfg *storeConfig) error {
+		cfg.username = username
+		cfg.password = password
+		return nil
+	}
+}
+
+// WithPassword sets only the password for Redis authentication.
+// This is a convenience function for Redis instances that don't use username.
+func WithPassword(password string) Option {
+	return func(cfg *storeConfig) error {
+		cfg.password = password
+		return nil
+	}
+}
+
+// WithDB sets the Redis database index to use.
+// The db parameter should be a string representation of a number between 0 and 15.
+// If empty, defaults to "0".
+func WithDB(db string) Option {
+	return func(cfg *storeConfig) error {
+		if db == "" {
+			db = "0"
+		}
+		dbNum, err := strconv.Atoi(db)
+		if err != nil {
+			return fmt.Errorf("invalid database number %q: %w", db, err)
+		}
+		if dbNum < 0 || dbNum > 15 {
+			return fmt.Errorf("database number must be between 0 and 15, got %d", dbNum)
+		}
+		cfg.db = db
+		return nil
+	}
+}
+
+// WithDBNum sets the Redis database index using an integer.
+// This is a convenience function equivalent to WithDB(strconv.Itoa(dbNum)).
+func WithDBNum(dbNum int) Option {
+	return func(cfg *storeConfig) error {
+		if dbNum < 0 || dbNum > 15 {
+			return fmt.Errorf("database number must be between 0 and 15, got %d", dbNum)
+		}
+		cfg.db = strconv.Itoa(dbNum)
+		return nil
+	}
+}
+
+// WithPoolSize sets the maximum number of idle connections in the pool.
+// Default is 10. Only applies when using WithAddress or WithURL.
+func WithPoolSize(size int) Option {
+	return func(cfg *storeConfig) error {
+		if size <= 0 {
+			return fmt.Errorf("pool size must be positive, got %d", size)
+		}
+		cfg.poolSize = size
+		return nil
+	}
+}
+
+// WithIdleTimeout sets the idle timeout for connections in the pool.
+// Default is 240 seconds. Only applies when using WithAddress or WithURL.
+func WithIdleTimeout(timeout time.Duration) Option {
+	return func(cfg *storeConfig) error {
+		if timeout < 0 {
+			return fmt.Errorf("idle timeout cannot be negative")
+		}
+		cfg.idleTimeout = timeout
+		return nil
+	}
+}
+
+// WithMaxLength sets the maximum size of session data in bytes.
+// Default is 4096 bytes. Set to 0 for no limit (use with caution).
+// Redis allows values up to 512MB.
+func WithMaxLength(length int) Option {
+	return func(cfg *storeConfig) error {
+		if length < 0 {
+			return fmt.Errorf("max length cannot be negative")
+		}
+		cfg.maxLength = length
+		return nil
+	}
+}
+
+// WithKeyPrefix sets the prefix for all Redis keys used by this store.
+// Default is "session_". This is useful to avoid key collisions when using
+// a single Redis instance for multiple applications.
+func WithKeyPrefix(prefix string) Option {
+	return func(cfg *storeConfig) error {
+		cfg.keyPrefix = prefix
+		return nil
+	}
+}
+
+// WithDefaultMaxAge sets the default TTL (time-to-live) in seconds for sessions.
+// This is used when session.Options.MaxAge is 0.
+// Default is 1200 seconds (20 minutes).
+func WithDefaultMaxAge(age int) Option {
+	return func(cfg *storeConfig) error {
+		if age < 0 {
+			return fmt.Errorf("default max age cannot be negative")
+		}
+		cfg.defaultMaxAge = age
+		return nil
+	}
+}
+
+// WithSerializer sets the session serializer.
+// Default is GobSerializer. You can also use JSONSerializer or implement
+// your own SessionSerializer.
+func WithSerializer(serializer SessionSerializer) Option {
+	return func(cfg *storeConfig) error {
+		if serializer == nil {
+			return errors.New("serializer cannot be nil")
+		}
+		cfg.serializer = serializer
+		return nil
+	}
+}
+
+// WithSessionOptions sets the default session options.
+// This allows fine-grained control over cookie behavior.
+func WithSessionOptions(opts *sessions.Options) Option {
+	return func(cfg *storeConfig) error {
+		if opts == nil {
+			return errors.New("session options cannot be nil")
+		}
+		// Copy user-provided options into an internal instance to avoid
+		// aliasing and unintended mutations when other options are applied.
+		if cfg.sessionOpts == nil {
+			cfg.sessionOpts = &sessions.Options{}
+		}
+		*cfg.sessionOpts = *opts
+		return nil
+	}
+}
+
+// WithPath sets the cookie path for sessions.
+// Default is "/". This is a convenience function that modifies session options.
+func WithPath(path string) Option {
+	return func(cfg *storeConfig) error {
+		if cfg.sessionOpts == nil {
+			cfg.sessionOpts = &sessions.Options{}
+		}
+		cfg.sessionOpts.Path = path
+		return nil
+	}
+}
+
+// WithMaxAge sets the MaxAge for session cookies in seconds.
+// Default is sessionExpire (86400 * 30 = 30 days).
+// This is a convenience function that modifies session options.
+func WithMaxAge(age int) Option {
+	return func(cfg *storeConfig) error {
+		if cfg.sessionOpts == nil {
+			cfg.sessionOpts = &sessions.Options{}
+		}
+		cfg.sessionOpts.MaxAge = age
+		return nil
+	}
+}
+
+// defaultConfig returns a storeConfig with default values.
+func defaultConfig() *storeConfig {
+	return &storeConfig{
+		db:            "0",
+		poolSize:      10,
+		idleTimeout:   240 * time.Second,
+		maxLength:     4096,
+		keyPrefix:     "session_",
+		defaultMaxAge: 60 * 20, // 20 minutes
+		serializer:    GobSerializer{},
+		sessionOpts: &sessions.Options{
+			Path:   "/",
+			MaxAge: sessionExpire,
+		},
+	}
+}
+
+// validate checks that the configuration is valid.
+// It ensures that exactly one connection option is specified and all values are sensible.
+func (cfg *storeConfig) validate() error {
+	// Count connection options
+	connectionOptions := 0
+	if cfg.pool != nil {
+		connectionOptions++
+	}
+	if cfg.address != nil {
+		connectionOptions++
+	}
+	if cfg.url != "" {
+		connectionOptions++
+	}
+
+	if connectionOptions == 0 {
+		return errors.New(
+			"exactly one connection option is required: use WithPool, WithAddress, or WithURL",
+		)
+	}
+	if connectionOptions > 1 {
+		return errors.New(
+			"only one connection option can be specified: " +
+				"WithPool, WithAddress, or WithURL are mutually exclusive",
+		)
+	}
+
+	return nil
+}
+
+// buildPool creates a Redis connection pool based on the configuration.
+// Returns the existing pool if cfg.pool is set, otherwise creates a new one.
+func (cfg *storeConfig) buildPool() (*redis.Pool, error) {
+	// If pool is already provided, use it
+	if cfg.pool != nil {
+		return cfg.pool, nil
+	}
+
+	// Create dial function based on address or URL
+	var dialFunc func() (redis.Conn, error)
+
+	switch {
+	case cfg.address != nil:
+		// Use address-based connection
+		dialFunc = func() (redis.Conn, error) {
+			return dialClient(
+				cfg.address.network,
+				cfg.address.address,
+				cfg.username,
+				cfg.password,
+				cfg.db,
+			)
+		}
+	case cfg.url != "":
+		// Use URL-based connection
+		dialFunc = func() (redis.Conn, error) {
+			return redis.DialURL(cfg.url)
+		}
+	default:
+		return nil, errors.New("no connection method specified")
+	}
+
+	// Create the pool
+	pool := &redis.Pool{
+		MaxIdle:     cfg.poolSize,
+		IdleTimeout: cfg.idleTimeout,
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+		Dial: dialFunc,
+	}
+
+	return pool, nil
+}
+
+// Keys creates a key pairs slice from individual byte slices.
+// This is a convenience function to simplify the creation of key pairs
+// without having to write [][]byte{...}.
+//
+// Example:
+//
+//	store, err := NewStore(
+//	    Keys([]byte("auth-key"), []byte("encrypt-key")),
+//	    WithAddress("tcp", ":6379"),
+//	)
+func Keys(keys ...[]byte) [][]byte {
+	return keys
+}
+
+// KeysFromStrings creates a key pairs slice from strings.
+// This is the most convenient way to provide keys for development and testing.
+//
+// Warning: For production use with sensitive keys, consider using Keys() with
+// byte slices loaded from secure storage instead of hardcoded strings.
+//
+// Example:
+//
+//	// Single key
+//	store, err := NewStore(
+//	    KeysFromStrings("secret-key"),
+//	    WithAddress("tcp", ":6379"),
+//	)
+//
+//	// Multiple keys for rotation
+//	store, err := NewStore(
+//	    KeysFromStrings(
+//	        "new-auth-key",
+//	        "new-encrypt-key",
+//	        "old-auth-key",
+//	        "old-encrypt-key",
+//	    ),
+//	    WithAddress("tcp", ":6379"),
+//	)
+func KeysFromStrings(keys ...string) [][]byte {
+	result := make([][]byte, len(keys))
+	for i, k := range keys {
+		result[i] = []byte(k)
+	}
+	return result
+}
+
+// NewStore creates a new RediStore with the given options.
+//
+// Parameters:
+//
+//	keyPairs - One or more key pairs for cookie encryption and authentication.
+//	           Each key should be 16, 24, or 32 bytes for AES-128, AES-192, or AES-256.
+//	           Keys are used in pairs: authentication key and encryption key.
+//	           Provide multiple pairs for key rotation (first pair is used for encoding,
+//	           remaining pairs are used for decoding only).
+//	opts - Configuration options. At least one connection option is required.
+//
+// Connection Options (required, exactly one):
+//   - WithPool(pool) - Use a custom Redis connection pool
+//   - WithAddress(network, address) - Connect using network protocol and address
+//   - WithURL(url) - Connect using a Redis URL
+//
+// Authentication Options:
+//   - WithAuth(username, password) - Set username and password
+//   - WithPassword(password) - Set password only
+//
+// Redis Configuration Options:
+//   - WithDB(db) - Set database index (default "0")
+//   - WithDBNum(n) - Set database index as integer
+//   - WithPoolSize(size) - Set connection pool size (default 10)
+//   - WithIdleTimeout(timeout) - Set idle timeout (default 240s)
+//
+// Store Configuration Options:
+//   - WithMaxLength(length) - Set max session size (default 4096)
+//   - WithKeyPrefix(prefix) - Set Redis key prefix (default "session_")
+//   - WithDefaultMaxAge(age) - Set default TTL (default 1200)
+//   - WithSerializer(s) - Set serializer (default GobSerializer)
+//   - WithSessionOptions(opts) - Set session options
+//   - WithPath(path) - Set cookie path (default "/")
+//   - WithMaxAge(age) - Set cookie MaxAge (default 30 days)
+//
+// Example:
+//
+//	// Basic usage with single key (using helper function)
+//	store, err := NewStore(
+//	    KeysFromStrings("secret-key"),
+//	    WithAddress("tcp", ":6379"),
+//	)
+//
+//	// Using Keys() with byte slices
+//	store, err := NewStore(
+//	    Keys(
+//	        []byte("authentication-key"), // 32 or 64 bytes
+//	        []byte("encryption-key"),     // 16, 24, or 32 bytes
+//	    ),
+//	    WithAddress("tcp", ":6379"),
+//	)
+//
+//	// With key rotation (old keys for decoding only)
+//	store, err := NewStore(
+//	    KeysFromStrings(
+//	        "new-auth-key",
+//	        "new-encrypt-key",
+//	        "old-auth-key",    // For decoding existing sessions
+//	        "old-encrypt-key",
+//	    ),
+//	    WithAddress("tcp", "localhost:6379"),
+//	    WithDB("1"),
+//	)
+//
+//	// With multiple options
+//	store, err := NewStore(
+//	    KeysFromStrings("secret-key"),
+//	    WithAddress("tcp", "localhost:6379"),
+//	    WithDB("1"),
+//	    WithMaxLength(8192),
+//	    WithKeyPrefix("myapp_"),
+//	    WithSerializer(JSONSerializer{}),
+//	)
+//
+//	// Using URL
+//	store, err := NewStore(
+//	    KeysFromStrings("secret-key"),
+//	    WithURL("redis://:password@localhost:6379/0"),
+//	)
+//
+//	// Without helper functions (direct slice)
+//	store, err := NewStore(
+//	    [][]byte{[]byte("secret-key")},
+//	    WithAddress("tcp", ":6379"),
+//	)
+func NewStore(keyPairs [][]byte, opts ...Option) (*RediStore, error) {
+	// Validate key pairs
+	if len(keyPairs) == 0 {
+		return nil, errors.New("at least one key pair is required")
+	}
+
+	// Start with default configuration
+	cfg := defaultConfig()
+
+	// Apply all options
+	for i, opt := range opts {
+		if err := opt(cfg); err != nil {
+			return nil, fmt.Errorf("failed to apply option %d: %w", i, err)
+		}
+	}
+
+	// Validate configuration
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	// Build connection pool
+	pool, err := cfg.buildPool()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+	}
+
+	// Create RediStore instance
+	rs := &RediStore{
+		Pool:          pool,
+		Codecs:        securecookie.CodecsFromPairs(keyPairs...),
+		Options:       cfg.sessionOpts,
+		DefaultMaxAge: cfg.defaultMaxAge,
+		maxLength:     cfg.maxLength,
+		keyPrefix:     cfg.keyPrefix,
+		serializer:    cfg.serializer,
+	}
+
+	// Test connection
+	if _, err := rs.ping(); err != nil {
+		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
+	}
+
+	return rs, nil
 }
 
 // SetMaxLength sets RediStore.maxLength if the `l` argument is greater or equal 0
@@ -206,30 +725,6 @@ func (s *RediStore) SetMaxAge(v int) {
 	}
 }
 
-// NewRediStore creates a new RediStore with a connection pool to a Redis server.
-// The size parameter specifies the maximum number of idle connections in the pool.
-// The network and address parameters specify the network type and address of the Redis server.
-// The username and password parameters are used for authentication with the Redis server.
-// The keyPairs parameter is a variadic argument that allows passing multiple key pairs for cookie encryption.
-// It returns a pointer to a RediStore and an error if the connection to the Redis server fails.
-func NewRediStore(
-	size int,
-	network, address, username, password string,
-	keyPairs ...[]byte,
-) (*RediStore, error) {
-	return NewRediStoreWithPool(&redis.Pool{
-		MaxIdle:     size,
-		IdleTimeout: 240 * time.Second,
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-		Dial: func() (redis.Conn, error) {
-			return dialClient(network, address, username, password, "")
-		},
-	}, keyPairs...)
-}
-
 func dialClient(network, address, username, password, db string) (redis.Conn, error) {
 	// check db and convert to int
 	if db == "" {
@@ -260,99 +755,6 @@ func dialClient(network, address, username, password, db string) (redis.Conn, er
 		redis.DialPassword(password),
 		redis.DialDatabase(dbNum),
 	)
-}
-
-// NewRediStoreWithDB creates a new RediStore with a Redis connection pool.
-// The pool is configured with the provided size, network, address, username, password, and database (DB).
-// The keyPairs are used for cookie encryption.
-//
-// Parameters:
-//   - size: The maximum number of idle connections in the pool.
-//   - network: The network type (e.g., "tcp").
-//   - address: The address of the Redis server.
-//   - username: The username for Redis authentication.
-//   - password: The password for Redis authentication.
-//   - DB: The Redis database to be selected after connecting.
-//   - keyPairs: Variadic parameter for cookie encryption keys.
-//
-// Returns:
-//   - *RediStore: A pointer to the newly created RediStore.
-//   - error: An error if the RediStore could not be created.
-func NewRediStoreWithDB(
-	size int,
-	network, address, username, password, db string,
-	keyPairs ...[]byte,
-) (*RediStore, error) {
-	return NewRediStoreWithPool(&redis.Pool{
-		MaxIdle:     size,
-		IdleTimeout: 240 * time.Second,
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-		Dial: func() (redis.Conn, error) {
-			return dialClient(network, address, username, password, db)
-		},
-	}, keyPairs...)
-}
-
-// NewRediStoreWithPool creates a new RediStore instance using the provided
-// Redis connection pool and key pairs for secure cookie encoding.
-//
-// Parameters:
-//   - pool: A Redis connection pool.
-//   - keyPairs: Variadic parameter for secure cookie encoding key pairs.
-//
-// Returns:
-//   - *RediStore: A pointer to the newly created RediStore instance.
-//   - error: An error if the RediStore could not be created.
-//
-// The RediStore is configured with default options including a session path
-// of "/", a default maximum age of 20 minutes, a maximum length of 4096 bytes,
-// a key prefix of "session_", and a Gob serializer.
-func NewRediStoreWithPool(pool *redis.Pool, keyPairs ...[]byte) (*RediStore, error) {
-	rs := &RediStore{
-		// http://godoc.org/github.com/gomodule/redigo/redis#Pool
-		Pool:   pool,
-		Codecs: securecookie.CodecsFromPairs(keyPairs...),
-		Options: &sessions.Options{
-			Path:   "/",
-			MaxAge: sessionExpire,
-		},
-		DefaultMaxAge: 60 * 20, // 20 minutes seems like a reasonable default
-		maxLength:     4096,
-		keyPrefix:     "session_",
-		serializer:    GobSerializer{},
-	}
-	_, err := rs.ping()
-	return rs, err
-}
-
-// NewRediStoreWithURL creates a new RediStore with a Redis connection pool configured
-// using the provided URL. The pool has a maximum number of idle connections specified
-// by the size parameter, and an idle timeout of 240 seconds. The function also accepts
-// optional key pairs for secure cookie encoding.
-//
-// Parameters:
-//   - size: The maximum number of idle connections in the pool.
-//   - url: The Redis server URL.
-//   - keyPairs: Optional variadic parameter for secure cookie encoding.
-//
-// Returns:
-//   - *RediStore: A pointer to the newly created RediStore.
-//   - error: An error if the connection to the Redis server fails.
-func NewRediStoreWithURL(size int, url string, keyPairs ...[]byte) (*RediStore, error) {
-	return NewRediStoreWithPool(&redis.Pool{
-		MaxIdle:     size,
-		IdleTimeout: 240 * time.Second,
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-		Dial: func() (redis.Conn, error) {
-			return redis.DialURL(url)
-		},
-	}, keyPairs...)
 }
 
 // Close closes the underlying *redis.Pool

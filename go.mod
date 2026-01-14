@@ -1,4 +1,4 @@
-module github.com/boj/redistore
+module github.com/boj/redistore/v2
 
 go 1.23
 
