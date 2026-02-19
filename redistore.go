@@ -6,6 +6,7 @@ package redistore
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/base32"
 	"encoding/gob"
 	"encoding/json"
@@ -136,8 +137,11 @@ type Option func(*storeConfig) error
 
 // addressConfig holds network and address configuration for Redis connection.
 type addressConfig struct {
-	network string
-	address string
+	network                string
+	address                string
+	useTLS                 bool
+	disableTLSVerification bool
+	tlsConfig              *tls.Config
 }
 
 // storeConfig is an internal configuration structure used during RediStore initialization.
@@ -215,6 +219,47 @@ func WithAddress(network, address string) Option {
 			network: network,
 			address: address,
 		}
+		return nil
+	}
+}
+
+// WithTLS configures TLS for address-based Redis connections.
+// Use the `enable` flag to explicitly enable or disable TLS for the
+// address configured via `WithAddress`. This option is not valid with
+// `WithURL`.
+//
+// Parameters:
+//   - enable: set to true to enable TLS, false to disable it
+//   - disableTLSVerification: when enabling TLS, pass true to skip cert verification (testing only)
+//   - tlsConfig: optional custom TLS configuration (mutually exclusive with disableTLSVerification)
+//
+// Examples:
+//
+//	WithTLS(true, true, nil)                // enable TLS and skip verification (testing)
+//	WithTLS(true, false, tlsConfig)         // enable TLS with custom tls.Config (recommended)
+func WithTLS(enable bool, disableTLSVerification bool, tlsConfig *tls.Config) Option {
+	return func(cfg *storeConfig) error {
+		// mutual exclusivity for tls arguments
+		if disableTLSVerification && tlsConfig != nil {
+			return errors.New("disableTLSVerification and tlsConfig are mutually exclusive")
+		}
+		// cannot use TLS when URL-based dial is configured
+		if cfg.url != "" {
+			return errors.New("WithTLS cannot be used with WithURL")
+		}
+		// require address-based configuration
+		if cfg.address == nil {
+			return errors.New("WithTLS requires WithAddress to be set before calling WithTLS")
+		}
+		if !enable {
+			cfg.address.useTLS = false
+			cfg.address.disableTLSVerification = false
+			cfg.address.tlsConfig = nil
+			return nil
+		}
+		cfg.address.useTLS = true
+		cfg.address.disableTLSVerification = disableTLSVerification
+		cfg.address.tlsConfig = tlsConfig
 		return nil
 	}
 }
@@ -470,6 +515,9 @@ func (cfg *storeConfig) buildPool() (*redis.Pool, error) {
 				cfg.username,
 				cfg.password,
 				cfg.db,
+				cfg.address.useTLS,
+				cfg.address.disableTLSVerification,
+				cfg.address.tlsConfig,
 			)
 		}
 	case cfg.url != "":
@@ -725,7 +773,11 @@ func (s *RediStore) SetMaxAge(v int) {
 	}
 }
 
-func dialClient(network, address, username, password, db string) (redis.Conn, error) {
+func dialClient(
+	network, address, username, password, db string,
+	useTLS, disableTLSVerifification bool,
+	tlsConfig *tls.Config,
+) (redis.Conn, error) {
 	// check db and convert to int
 	if db == "" {
 		db = "0"
@@ -743,6 +795,11 @@ func dialClient(network, address, username, password, db string) (redis.Conn, er
 		return redis.Dial(
 			network,
 			address,
+			redis.DialTLSSkipVerify(disableTLSVerifification),
+			redis.DialUseTLS(useTLS),
+			redis.DialTLSConfig(tlsConfig),
+			redis.DialUsername(username),
+			redis.DialDatabase(dbNum),
 			redis.DialUsername(username),
 			redis.DialDatabase(dbNum),
 		)
@@ -803,7 +860,8 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 	} else {
 		// Build an alphanumeric key for the redis store.
 		if session.ID == "" {
-			session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
+			session.ID = strings.TrimRight(
+				base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
 		}
 		if err := s.save(session); err != nil {
 			return err
