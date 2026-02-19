@@ -1,6 +1,7 @@
 package redistore
 
 import (
+	"crypto/tls"
 	"testing"
 	"time"
 
@@ -460,4 +461,63 @@ func TestKeysFromStrings_EmptyKeys(t *testing.T) {
 	if err.Error() != "at least one key pair is required" {
 		t.Errorf("Unexpected error message: %v", err)
 	}
+}
+
+// TestWithTLS verifies the behavior of the WithTLS option.
+func TestWithTLS(t *testing.T) {
+	t.Run("mutually exclusive args", func(t *testing.T) {
+		cfg := defaultConfig()
+		// disableTLSVerification and tlsConfig cannot be used together
+		err := WithTLS(true, true, &tls.Config{})(cfg)
+		if err == nil {
+			t.Fatal("expected error when disableTLSVerification and tlsConfig are both set")
+		}
+	})
+
+	t.Run("applies to address", func(t *testing.T) {
+		cases := []struct {
+			name                   string
+			enable                 bool
+			disableTLSVerification bool
+			tlsCfg                 *tls.Config
+			wantDisable            bool
+			wantTLSConfigPresent   bool
+		}{
+			{"disable only", true, true, nil, true, false},
+			{"tls config only", true, false, &tls.Config{MinVersion: tls.VersionTLS12}, false, true},
+			{"enable without extras", true, false, nil, false, false},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				cfg := defaultConfig()
+				if err := WithAddress("tcp", "localhost:6379")(cfg); err != nil {
+					t.Fatalf("WithAddress failed: %v", err)
+				}
+				if err := WithTLS(tc.enable, tc.disableTLSVerification, tc.tlsCfg)(cfg); err != nil {
+					t.Fatalf("WithTLS returned unexpected error: %v", err)
+				}
+				if cfg.address == nil {
+					t.Fatal("expected cfg.address to be set by WithAddress")
+				}
+				if !cfg.address.useTLS {
+					t.Fatalf("expected useTLS=true, got false")
+				}
+				if cfg.address.disableTLSVerification != tc.wantDisable {
+					t.Fatalf("disableTLSVerification: want %v got %v", tc.wantDisable, cfg.address.disableTLSVerification)
+				}
+				if (cfg.address.tlsConfig != nil) != tc.wantTLSConfigPresent {
+					t.Fatalf("tlsConfig presence: want %v got %v", tc.wantTLSConfigPresent, cfg.address.tlsConfig != nil)
+				}
+			})
+		}
+	})
+
+	t.Run("error when address missing", func(t *testing.T) {
+		cfg := defaultConfig()
+		err := WithTLS(true, false, nil)(cfg)
+		if err == nil {
+			t.Fatal("expected error when applying WithTLS without WithAddress")
+		}
+	})
 }

@@ -278,6 +278,36 @@ func main() {
 | `WithAddress(network, address)` | Connect via network and address (e.g., "tcp", ":6379")   |
 | `WithURL(url)`                  | Connect via Redis URL (e.g., "redis://localhost:6379/0") |
 
+### TLS / Secure Connections
+
+If your Redis instance requires TLS, use `WithAddress` together with `WithTLS` to enable TLS.
+- `WithTLS(enable bool, disableTLSVerification bool, tlsConfig *tls.Config)` — enable TLS when connecting via `WithAddress`.
+    - Set `enable` to `true` to enable TLS for address-based connections.
+    - Pass `true` to `disableTLSVerification` to skip certificate verification (use only for testing).
+    - Or pass a non-nil `*tls.Config` to configure TLS parameters (preferred for production).
+    - `disableTLSVerification` and `tlsConfig` are mutually exclusive.
+
+Example (skip verification - testing only):
+
+```go
+store, err := redistore.NewStore(
+    redistore.KeysFromStrings("secret-key"),
+    redistore.WithAddress("tcp", "redis.example.com:6380"),
+    redistore.WithTLS(true, true, nil),
+)
+```
+
+Example (custom TLS config):
+
+```go
+tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+store, err := redistore.NewStore(
+    redistore.KeysFromStrings("secret-key"),
+    redistore.WithAddress("tcp", "redis.example.com:6380"),
+    redistore.WithTLS(true, false, tlsCfg),
+)
+```
+
 ### Authentication Options
 
 | Option                         | Description               |
