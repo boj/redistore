@@ -1,6 +1,7 @@
 package redistore
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -45,6 +46,220 @@ func TestNewStore_MultipleConnectionOptions(t *testing.T) {
 		"WithPool, WithAddress, or WithURL are mutually exclusive"
 	if err.Error() != expectedErr {
 		t.Errorf("Unexpected error message: %v", err)
+	}
+}
+
+// expectedURLFieldErrPrefix is the prefix shared by every URL/option
+// per-field conflict error. The validator appends the specific field
+// name, so tests only assert on the prefix to stay decoupled from the
+// exact wording of each message.
+const expectedURLFieldErrPrefix = "invalid configuration: WithURL already specifies a "
+
+// TestParseRedisURL exercises the URL parser used by both validate() and
+// buildPool(). It does not need a running Redis.
+func TestParseRedisURL(t *testing.T) {
+	t.Run("Valid URLs", func(t *testing.T) {
+		cases := []struct {
+			raw      string
+			network  string
+			address  string
+			username string
+			password string
+			db       string
+		}{
+			{"redis://localhost:6379", "tcp", "localhost:6379", "", "", ""},
+			{"redis://localhost:6379/0", "tcp", "localhost:6379", "", "", "0"},
+			{"redis://localhost:6379/5", "tcp", "localhost:6379", "", "", "5"},
+			{"redis://:pw@localhost:6379", "tcp", "localhost:6379", "", "pw", ""},
+			{"redis://user@localhost:6379", "tcp", "localhost:6379", "user", "", ""},
+			{"redis://user:pw@localhost:6379/3", "tcp", "localhost:6379", "user", "pw", "3"},
+			{"rediss://localhost:6379", "tcp", "localhost:6379", "", "", ""},
+			{"unix:///tmp/redis.sock", "unix", "/tmp/redis.sock", "", "", ""},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.raw, func(t *testing.T) {
+				parts, err := parseRedisURL(tc.raw)
+				if err != nil {
+					t.Fatalf("parseRedisURL(%q) returned error: %v", tc.raw, err)
+				}
+				if parts.network != tc.network {
+					t.Errorf("network: want %q, got %q", tc.network, parts.network)
+				}
+				if parts.address != tc.address {
+					t.Errorf("address: want %q, got %q", tc.address, parts.address)
+				}
+				if parts.username != tc.username {
+					t.Errorf("username: want %q, got %q", tc.username, parts.username)
+				}
+				if parts.password != tc.password {
+					t.Errorf("password: want %q, got %q", tc.password, parts.password)
+				}
+				if parts.db != tc.db {
+					t.Errorf("db: want %q, got %q", tc.db, parts.db)
+				}
+			})
+		}
+	})
+
+	t.Run("Invalid scheme", func(t *testing.T) {
+		_, err := parseRedisURL("http://localhost:6379")
+		if err == nil {
+			t.Fatal("Expected error for unsupported scheme")
+		}
+	})
+}
+
+// TestNewStore_URLFieldConflict covers the per-field conflicts that the
+// validator must reject: URL+option both set the username, the password,
+// or a non-default database. For cases that produce two simultaneous
+// conflicts we accept either field name in the error message.
+func TestNewStore_URLFieldConflict(t *testing.T) {
+	cases := []struct {
+		name        string
+		url         string
+		opt         Option
+		mustMention string   // error must mention this fragment
+		orMention   []string // OR one of these (for ambiguous cases)
+	}{
+		{
+			name:        "URL user + WithAuth user",
+			url:         "redis://user@localhost:6379",
+			opt:         WithAuth("user", "pw"),
+			mustMention: "username",
+		},
+		{
+			name:        "URL user:pw + WithAuth user",
+			url:         "redis://user:pw@localhost:6379",
+			opt:         WithAuth("user", "pw"),
+			mustMention: "username",
+		},
+		{
+			name:        "URL password + WithPassword",
+			url:         "redis://:pw@localhost:6379",
+			opt:         WithPassword("pw"),
+			mustMention: "password",
+		},
+		{
+			name:        "URL user:pw + WithPassword",
+			url:         "redis://user:pw@localhost:6379",
+			opt:         WithPassword("pw"),
+			mustMention: "password",
+		},
+		{
+			name:        "URL user:pw + WithAuth mismatched",
+			url:         "redis://user:pw@localhost:6379",
+			opt:         WithAuth("user", "other"),
+			mustMention: "username",
+			orMention:   []string{"password"},
+		},
+		{
+			name:        "URL db /5 + WithDB(\"5\")",
+			url:         "redis://localhost:6379/5",
+			opt:         WithDB("5"),
+			mustMention: "database",
+		},
+		{
+			name:        "URL db /5 + WithDB(\"7\")",
+			url:         "redis://localhost:6379/5",
+			opt:         WithDB("7"),
+			mustMention: "database",
+		},
+		{
+			name:        "URL db /0 + WithDB(\"5\")",
+			url:         "redis://localhost:6379/0",
+			opt:         WithDB("5"),
+			mustMention: "database",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewStore(
+				[][]byte{[]byte("secret-key")},
+				WithURL(tc.url),
+				tc.opt,
+			)
+			if err == nil {
+				t.Fatalf("Expected conflict error, got nil")
+			}
+			msg := err.Error()
+			if !strings.HasPrefix(msg, expectedURLFieldErrPrefix) {
+				t.Errorf("Unexpected error prefix: %v", err)
+			}
+			if !strings.Contains(msg, tc.mustMention) &&
+				!anyContains(msg, tc.orMention) {
+				t.Errorf("Error should mention %q (or one of %v), got: %v",
+					tc.mustMention, tc.orMention, err)
+			}
+		})
+	}
+}
+
+func anyContains(s string, fragments []string) bool {
+	for _, f := range fragments {
+		if strings.Contains(s, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestNewStore_URLFieldMerge covers the cases the user can reasonably
+// expect to work: the URL leaves a field empty, and the matching option
+// fills it in. These must NOT trigger a conflict error during validation.
+// We skip the test if no Redis is available (validation will then fail
+// later with a connection error, which is expected and unrelated).
+func TestNewStore_URLFieldMerge(t *testing.T) {
+	cases := []struct {
+		name string
+		opts []Option
+	}{
+		{
+			name: "URL no auth + WithAuth",
+			opts: []Option{WithURL("redis://localhost:6379"), WithAuth("u", "p")},
+		},
+		{
+			name: "URL no auth + WithPassword",
+			opts: []Option{WithURL("redis://localhost:6379"), WithPassword("p")},
+		},
+		{
+			name: "URL no db + WithDB",
+			opts: []Option{WithURL("redis://localhost:6379"), WithDB("5")},
+		},
+		{
+			name: "URL username only + WithPassword",
+			opts: []Option{WithURL("redis://user@localhost:6379"), WithPassword("p")},
+		},
+		{
+			name: "URL password only + WithAuth username only",
+			// WithAuth("u", "") keeps cfg.password empty so the URL's
+			// password does not collide; the option's username fills in.
+			opts: []Option{WithURL("redis://:pw@localhost:6379"), WithAuth("u", "")},
+		},
+		{
+			name: "URL no db /0 + WithDB(\"0\") default",
+			opts: []Option{WithURL("redis://localhost:6379/0"), WithDB("0")},
+		},
+		{
+			name: "URL db /5 + WithDB(\"0\") default",
+			opts: []Option{WithURL("redis://localhost:6379/5"), WithDB("0")},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewStore(
+				[][]byte{[]byte("secret-key")},
+				tc.opts...,
+			)
+			// The validation must not have fired. Any error here is a
+			// downstream connection error (no Redis in test env), which
+			// we tolerate.
+			if err != nil && strings.HasPrefix(err.Error(), expectedURLFieldErrPrefix) {
+				t.Fatalf("Validator should have accepted the merge, got: %v", err)
+			}
+		})
 	}
 }
 

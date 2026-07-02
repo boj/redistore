@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -419,6 +420,60 @@ func defaultConfig() *storeConfig {
 	}
 }
 
+// redisURLParts captures the connection components extracted from a Redis
+// URL. Empty fields indicate that the URL did not specify that component,
+// so a later merge step can fall back to WithAuth / WithPassword / WithDB.
+type redisURLParts struct {
+	network  string // "tcp" or "unix"
+	address  string // host:port for tcp, socket path for unix
+	username string // empty if not in URL
+	password string // empty if not in URL
+	db       string // empty if not in URL
+}
+
+// parseRedisURL extracts the connection components from a Redis URL.
+// It supports the redis://, rediss://, and unix:// schemes. An empty
+// field in the returned struct means the URL did not specify that
+// component.
+func parseRedisURL(rawURL string) (*redisURLParts, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid URL: %w", err)
+	}
+
+	parts := &redisURLParts{}
+
+	switch u.Scheme {
+	case "redis", "rediss":
+		parts.network = "tcp"
+		parts.address = u.Host
+	case "unix":
+		// For unix sockets the entire path is the socket file. The redis
+		// URL format does not specify a database component on top of it.
+		parts.network = "unix"
+		parts.address = u.Path
+		parts.db = ""
+		return parts, nil
+	default:
+		return nil, fmt.Errorf(
+			"unsupported URL scheme %q (expected redis://, rediss://, or unix://)",
+			u.Scheme,
+		)
+	}
+
+	if u.User != nil {
+		parts.username = u.User.Username()
+		if pwd, ok := u.User.Password(); ok {
+			parts.password = pwd
+		}
+	}
+
+	// Path looks like "/0", "/5", or empty; "" means "not specified".
+	parts.db = strings.TrimPrefix(u.Path, "/")
+
+	return parts, nil
+}
+
 // validate checks that the configuration is valid.
 // It ensures that exactly one connection option is specified and all values are sensible.
 func (cfg *storeConfig) validate() error {
@@ -444,6 +499,35 @@ func (cfg *storeConfig) validate() error {
 			"only one connection option can be specified: " +
 				"WithPool, WithAddress, or WithURL are mutually exclusive",
 		)
+	}
+
+	// When using WithURL, the URL may omit username, password, or database.
+	// Those missing fields are filled in by the corresponding WithAuth /
+	// WithPassword / WithDB options. A field is only in conflict — and
+	// therefore an error — when *both* the URL and an option specify it.
+	if cfg.url != "" {
+		parts, err := parseRedisURL(cfg.url)
+		if err != nil {
+			return err
+		}
+		if parts.username != "" && cfg.username != "" {
+			return errors.New(
+				"WithURL already specifies a username; " +
+					"remove WithAuth or remove the userinfo from the URL",
+			)
+		}
+		if parts.password != "" && cfg.password != "" {
+			return errors.New(
+				"WithURL already specifies a password; " +
+					"remove WithPassword (or the password in WithAuth) or remove the password from the URL",
+			)
+		}
+		if parts.db != "" && cfg.db != "0" {
+			return errors.New(
+				"WithURL already specifies a database; " +
+					"remove WithDB or remove the database path from the URL",
+			)
+		}
 	}
 
 	return nil
@@ -473,9 +557,34 @@ func (cfg *storeConfig) buildPool() (*redis.Pool, error) {
 			)
 		}
 	case cfg.url != "":
-		// Use URL-based connection
+		// Use URL-based connection. URL components are merged with any
+		// WithAuth/WithPassword/WithDB options: each field comes from the
+		// URL when present, otherwise from the matching option, otherwise
+		// from the default. The validator has already rejected the case
+		// where both sides specify the same field.
+		parts, err := parseRedisURL(cfg.url)
+		if err != nil {
+			return nil, fmt.Errorf("invalid URL: %w", err)
+		}
+
+		username := parts.username
+		if username == "" {
+			username = cfg.username
+		}
+		password := parts.password
+		if password == "" {
+			password = cfg.password
+		}
+		db := parts.db
+		if db == "" {
+			db = cfg.db
+		}
+
+		network := parts.network
+		address := parts.address
+
 		dialFunc = func() (redis.Conn, error) {
-			return redis.DialURL(cfg.url)
+			return dialClient(network, address, username, password, db)
 		}
 	default:
 		return nil, errors.New("no connection method specified")
