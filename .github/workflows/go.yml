@@ -16,13 +16,13 @@ jobs:
         uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version-file: "go.mod"
+          go-version-file: go.tools.mod
+          cache-dependency-path: |
+            go.sum
+            go.tools.sum
           check-latest: true
-      - name: Setup golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.7
-          args: --verbose
+      - name: Run golangci-lint
+        run: make lint
   test:
     strategy:
       matrix:

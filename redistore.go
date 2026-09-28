@@ -803,7 +803,10 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 	} else {
 		// Build an alphanumeric key for the redis store.
 		if session.ID == "" {
-			session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
+			session.ID = strings.TrimRight(
+				base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)),
+				"=",
+			)
 		}
 		if err := s.save(session); err != nil {
 			return err
