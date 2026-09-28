@@ -50,12 +50,16 @@ type JSONSerializer struct{}
 //	A byte slice containing the JSON-encoded session values, or an error if
 //	serialization fails.
 func (s JSONSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
-	m := make(map[string]interface{}, len(ss.Values))
+	m := make(map[string]any, len(ss.Values))
 	for k, v := range ss.Values {
 		ks, ok := k.(string)
 		if !ok {
 			err := fmt.Errorf("non-string key value, cannot serialize session to JSON: %v", k)
-			fmt.Printf("redistore.JSONSerializer.serialize() Error: %v", err)
+			//nolint:forbidigo // Preserve existing stdout diagnostics for library callers.
+			fmt.Printf(
+				"redistore.JSONSerializer.serialize() Error: %v",
+				err,
+			)
 			return nil, err
 		}
 		m[ks] = v
@@ -74,10 +78,14 @@ func (s JSONSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 // Returns:
 // - An error if the deserialization process fails, otherwise nil.
 func (s JSONSerializer) Deserialize(d []byte, ss *sessions.Session) error {
-	m := make(map[string]interface{})
+	m := make(map[string]any)
 	err := json.Unmarshal(d, &m)
 	if err != nil {
-		fmt.Printf("redistore.JSONSerializer.deserialize() Error: %v", err)
+		//nolint:forbidigo // Preserve existing stdout diagnostics for library callers.
+		fmt.Printf(
+			"redistore.JSONSerializer.deserialize() Error: %v",
+			err,
+		)
 		return err
 	}
 	for k, v := range m {
@@ -304,7 +312,7 @@ func WithPoolSize(size int) Option {
 func WithIdleTimeout(timeout time.Duration) Option {
 	return func(cfg *storeConfig) error {
 		if timeout < 0 {
-			return fmt.Errorf("idle timeout cannot be negative")
+			return errors.New("idle timeout cannot be negative")
 		}
 		cfg.idleTimeout = timeout
 		return nil
@@ -317,7 +325,7 @@ func WithIdleTimeout(timeout time.Duration) Option {
 func WithMaxLength(length int) Option {
 	return func(cfg *storeConfig) error {
 		if length < 0 {
-			return fmt.Errorf("max length cannot be negative")
+			return errors.New("max length cannot be negative")
 		}
 		cfg.maxLength = length
 		return nil
@@ -340,7 +348,7 @@ func WithKeyPrefix(prefix string) Option {
 func WithDefaultMaxAge(age int) Option {
 	return func(cfg *storeConfig) error {
 		if age < 0 {
-			return fmt.Errorf("default max age cannot be negative")
+			return errors.New("default max age cannot be negative")
 		}
 		cfg.defaultMaxAge = age
 		return nil
@@ -720,7 +728,11 @@ func (s *RediStore) SetMaxAge(v int) {
 		if c, ok = s.Codecs[i].(*securecookie.SecureCookie); ok {
 			c.MaxAge(v)
 		} else {
-			fmt.Printf("Can't change MaxAge on codec %v\n", s.Codecs[i])
+			//nolint:forbidigo // Preserve existing stdout diagnostics for library callers.
+			fmt.Printf(
+				"Can't change MaxAge on codec %v\n",
+				s.Codecs[i],
+			)
 		}
 	}
 }
@@ -803,7 +815,10 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 	} else {
 		// Build an alphanumeric key for the redis store.
 		if session.ID == "" {
-			session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
+			session.ID = strings.TrimRight(
+				base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)),
+				"=",
+			)
 		}
 		if err := s.save(session); err != nil {
 			return err
@@ -829,7 +844,11 @@ func (s *RediStore) Delete(
 	conn := s.Pool.Get()
 	defer func() {
 		if err := conn.Close(); err != nil {
-			fmt.Printf("Error closing connection: %v\n", err)
+			//nolint:forbidigo // Preserve existing stdout diagnostics for library callers.
+			fmt.Printf(
+				"Error closing connection: %v\n",
+				err,
+			)
 		}
 	}()
 	if _, err := conn.Do("DEL", s.keyPrefix+session.ID); err != nil {
@@ -851,7 +870,11 @@ func (s *RediStore) ping() (bool, error) {
 	conn := s.Pool.Get()
 	defer func() {
 		if err := conn.Close(); err != nil {
-			fmt.Printf("Error closing connection: %v\n", err)
+			//nolint:forbidigo // Preserve existing stdout diagnostics for library callers.
+			fmt.Printf(
+				"Error closing connection: %v\n",
+				err,
+			)
 		}
 	}()
 	data, err := conn.Do("PING")
@@ -873,7 +896,11 @@ func (s *RediStore) save(session *sessions.Session) error {
 	conn := s.Pool.Get()
 	defer func() {
 		if err := conn.Close(); err != nil {
-			fmt.Printf("Error closing connection: %v\n", err)
+			//nolint:forbidigo // Preserve existing stdout diagnostics for library callers.
+			fmt.Printf(
+				"Error closing connection: %v\n",
+				err,
+			)
 		}
 	}()
 	if err = conn.Err(); err != nil {
@@ -893,7 +920,11 @@ func (s *RediStore) load(session *sessions.Session) (bool, error) {
 	conn := s.Pool.Get()
 	defer func() {
 		if err := conn.Close(); err != nil {
-			fmt.Printf("Error closing connection: %v\n", err)
+			//nolint:forbidigo // Preserve existing stdout diagnostics for library callers.
+			fmt.Printf(
+				"Error closing connection: %v\n",
+				err,
+			)
 		}
 	}()
 	if err := conn.Err(); err != nil {
@@ -918,7 +949,11 @@ func (s *RediStore) delete(session *sessions.Session) error {
 	conn := s.Pool.Get()
 	defer func() {
 		if err := conn.Close(); err != nil {
-			fmt.Printf("Error closing connection: %v\n", err)
+			//nolint:forbidigo // Preserve existing stdout diagnostics for library callers.
+			fmt.Printf(
+				"Error closing connection: %v\n",
+				err,
+			)
 		}
 	}()
 	if _, err := conn.Do("DEL", s.keyPrefix+session.ID); err != nil {

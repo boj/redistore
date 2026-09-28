@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/sessions"
@@ -158,12 +159,13 @@ func TestRediStore(t *testing.T) {
 		store := createTestStore(t, addr)
 		defer func() {
 			if err := store.Close(); err != nil {
-				fmt.Printf("Error closing store: %v\n", err)
+				t.Logf("Error closing store: %v\n", err)
 			}
 		}()
 
 		req, _ := http.NewRequestWithContext(
-			context.Background(), "GET", "http://localhost:8080/", nil)
+			context.Background(), http.MethodGet, "http://localhost:8080/", nil,
+		)
 		rsp := NewRecorder()
 		session := getSession(t, store, req)
 		flashes := session.Flashes()
@@ -182,12 +184,13 @@ func TestRediStore(t *testing.T) {
 		store := createTestStore(t, addr)
 		defer func() {
 			if err := store.Close(); err != nil {
-				fmt.Printf("Error closing store: %v\n", err)
+				t.Logf("Error closing store: %v\n", err)
 			}
 		}()
 
 		req, _ := http.NewRequestWithContext(
-			context.Background(), "GET", "http://localhost:8080/", nil)
+			context.Background(), http.MethodGet, "http://localhost:8080/", nil,
+		)
 		req.Header.Add("Cookie", cookies[0])
 		rsp := NewRecorder()
 		session := getSession(t, store, req)
@@ -221,12 +224,13 @@ func TestRediStore(t *testing.T) {
 		store := createTestStore(t, addr)
 		defer func() {
 			if err := store.Close(); err != nil {
-				fmt.Printf("Error closing store: %v\n", err)
+				t.Logf("Error closing store: %v\n", err)
 			}
 		}()
 
 		req, _ := http.NewRequestWithContext(
-			context.Background(), "GET", "http://localhost:8080/", nil)
+			context.Background(), http.MethodGet, "http://localhost:8080/", nil,
+		)
 		rsp := NewRecorder()
 		session := getSession(t, store, req)
 		flashes := session.Flashes()
@@ -243,12 +247,13 @@ func TestRediStore(t *testing.T) {
 		store := createTestStore(t, addr)
 		defer func() {
 			if err := store.Close(); err != nil {
-				fmt.Printf("Error closing store: %v\n", err)
+				t.Logf("Error closing store: %v\n", err)
 			}
 		}()
 
 		req, _ := http.NewRequestWithContext(
-			context.Background(), "GET", "http://localhost:8080/", nil)
+			context.Background(), http.MethodGet, "http://localhost:8080/", nil,
+		)
 		req.Header.Add("Cookie", cookies[0])
 		rsp := NewRecorder()
 		session := getSession(t, store, req)
@@ -268,7 +273,8 @@ func TestRediStore(t *testing.T) {
 		addr := setup()
 		store := createTestStore(t, addr)
 		req, err := http.NewRequestWithContext(
-			context.Background(), "GET", "http://www.example.com", nil)
+			context.Background(), http.MethodGet, "http://www.example.com", nil,
+		)
 		if err != nil {
 			t.Fatal("failed to create request", err)
 		}
@@ -296,12 +302,13 @@ func TestRediStore(t *testing.T) {
 		store := createTestStoreWithDB(t, addr, "1")
 		defer func() {
 			if err := store.Close(); err != nil {
-				fmt.Printf("Error closing store: %v\n", err)
+				t.Logf("Error closing store: %v\n", err)
 			}
 		}()
 
 		req, _ := http.NewRequestWithContext(
-			context.Background(), "GET", "http://localhost:8080/", nil)
+			context.Background(), http.MethodGet, "http://localhost:8080/", nil,
+		)
 		rsp := NewRecorder()
 		session := getSession(t, store, req)
 		flashes := session.Flashes()
@@ -329,12 +336,13 @@ func TestRediStore(t *testing.T) {
 		store.SetSerializer(JSONSerializer{})
 		defer func() {
 			if err := store.Close(); err != nil {
-				fmt.Printf("Error closing store: %v\n", err)
+				t.Logf("Error closing store: %v\n", err)
 			}
 		}()
 
 		req, _ := http.NewRequestWithContext(
-			context.Background(), "GET", "http://localhost:8080/", nil)
+			context.Background(), http.MethodGet, "http://localhost:8080/", nil,
+		)
 		rsp := NewRecorder()
 		session := getSession(t, store, req)
 		flashes := session.Flashes()
@@ -368,7 +376,7 @@ func TestPingGoodPort(t *testing.T) {
 	}
 	defer func() {
 		if err := store.Close(); err != nil {
-			fmt.Printf("Error closing store: %v\n", err)
+			t.Logf("Error closing store: %v\n", err)
 		}
 	}()
 	ok, err := store.ping()
@@ -390,7 +398,7 @@ func TestPingBadPort(t *testing.T) {
 	if err == nil {
 		defer func() {
 			if err := store.Close(); err != nil {
-				fmt.Printf("Error closing store: %v\n", err)
+				t.Logf("Error closing store: %v\n", err)
 			}
 		}()
 		_, pingErr := store.ping()
@@ -412,12 +420,13 @@ func TestNewStore_WithURL(t *testing.T) {
 		}
 		defer func() {
 			if err := store.Close(); err != nil {
-				fmt.Printf("Error closing store: %v\n", err)
+				t.Logf("Error closing store: %v\n", err)
 			}
 		}()
 
 		req, _ := http.NewRequestWithContext(
-			context.Background(), "GET", "http://localhost:8080/", nil)
+			context.Background(), http.MethodGet, "http://localhost:8080/", nil,
+		)
 		rsp := NewRecorder()
 		session := getSession(t, store, req)
 		flashes := session.Flashes()
@@ -449,7 +458,7 @@ func TestSessionCookieMaxAgeZero(t *testing.T) {
 	store := createTestStore(t, addr)
 	defer func() {
 		if err := store.Close(); err != nil {
-			fmt.Printf("Error closing store: %v\n", err)
+			t.Logf("Error closing store: %v\n", err)
 		}
 	}()
 
@@ -458,7 +467,8 @@ func TestSessionCookieMaxAgeZero(t *testing.T) {
 	// Round 1: Create a session with MaxAge = 0 (session cookie)
 	t.Run("Create session cookie with MaxAge=0", func(t *testing.T) {
 		req, _ := http.NewRequestWithContext(
-			context.Background(), "GET", "http://localhost:8080/", nil)
+			context.Background(), http.MethodGet, "http://localhost:8080/", nil,
+		)
 		rsp := NewRecorder()
 		session := getSession(t, store, req)
 
@@ -478,7 +488,7 @@ func TestSessionCookieMaxAgeZero(t *testing.T) {
 		// Verify the cookie doesn't contain an explicit Max-Age=0
 		// (session cookies should not have Max-Age attribute set to 0)
 		cookieStr := cookies[0]
-		if bytes.Contains([]byte(cookieStr), []byte("Max-Age=0")) {
+		if strings.Contains(cookieStr, "Max-Age=0") {
 			t.Errorf("Session cookie should not have Max-Age=0, got: %s", cookieStr)
 		}
 
@@ -519,7 +529,8 @@ func TestSessionCookieMaxAgeZero(t *testing.T) {
 	// Round 2: Verify the session can be retrieved
 	t.Run("Retrieve session cookie", func(t *testing.T) {
 		req, _ := http.NewRequestWithContext(
-			context.Background(), "GET", "http://localhost:8080/", nil)
+			context.Background(), http.MethodGet, "http://localhost:8080/", nil,
+		)
 		req.Header.Add("Cookie", cookies[0])
 		session := getSession(t, store, req)
 
@@ -543,7 +554,8 @@ func TestSessionCookieMaxAgeZero(t *testing.T) {
 	// Round 3: Verify MaxAge < 0 deletes the session (existing behavior)
 	t.Run("Delete session with MaxAge=-1", func(t *testing.T) {
 		req, _ := http.NewRequestWithContext(
-			context.Background(), "GET", "http://localhost:8080/", nil)
+			context.Background(), http.MethodGet, "http://localhost:8080/", nil,
+		)
 		req.Header.Add("Cookie", cookies[0])
 		rsp := NewRecorder()
 		session := getSession(t, store, req)
