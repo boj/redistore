@@ -27,7 +27,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        go: ["1.26.8"]
+        go: ["1.26", "1.27"]
         redis-version: [6, 7, 8]
         include:
           - os: ubuntu-latest
@@ -58,7 +58,7 @@ jobs:
           path: |
             ${{ matrix.go-build }}
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ matrix.go }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
       - name: Run Tests
